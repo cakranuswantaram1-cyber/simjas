@@ -1,10 +1,9 @@
 <!DOCTYPE html>
 <html lang="id">
-<link rel="manifest" href="manifest.json">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
-
 <head>
+
+<link rel="manifest" href="manifest.json">
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>SIMJAS PRO v3 - Sistem Manajemen Jadwal Cerdas</title>
@@ -74,7 +73,15 @@ body{font-family:'Noto Sans',sans-serif;background:var(--bg);color:#e2e2f0;}
 </style>
 </head>
 <body>
-<div id="root">
+            <div id="root"></div>
+                <script type="text/babel">
+        // ... kode React Anda ...
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+    
+</body>
+</html>
   <div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:14px">
     <div style="width:48px;height:48px;background:linear-gradient(135deg,#00e5a0,#00b8d4);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);animation:s 1s linear infinite"></div>
     <p style="color:#00e5a0;font-family:'Exo 2',sans-serif;font-weight:700;letter-spacing:3px;font-size:13px">MEMUAT SIMJAS PRO v3...</p>
@@ -1532,12 +1539,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
      // ... isi aplikasi Anda ...
   }
   
-  const root = ReactDOM.createRoot(document.getElementById('root'));
-  root.render(<App />);
-  
-  // ... sisa kode React Anda ...
+  // Hapus kode yang lama, ganti jadi ini saja:
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<App />);
+
 </script>
 </body>
 </html>

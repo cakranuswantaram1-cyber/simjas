@@ -1,7 +1,7 @@
 {
-  "name": "Sistem Jadwal MI Islamiyah",
+  "name": "Sistem Pembuatan Jadwal Otomatis",
   "short_name": "Jadwal MII",
-  "description": "Aplikasi Jadwal Pelajaran MI Islamiyah",
+  "description": "Aplikasi Jadwal Pelajaran",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#047857",

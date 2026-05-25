@@ -1,16 +1,17 @@
 {
-  "name": "SIMJAS PRO v3",
-  "short_name": "SIMJAS",
-  "description": "Sistem Manajemen Jadwal Cerdas",
-  "start_url": "./SIMJAS_PRO_v2.html",
+  "name": "Sistem Jadwal MI Islamiyah",
+  "short_name": "Jadwal MII",
+  "description": "Aplikasi Jadwal Pelajaran MI Islamiyah Purwawinangun",
+  "start_url": "Aplikasi_Jadwal.html",
   "display": "standalone",
-  "background_color": "#0d0d14",
-  "theme_color": "#00e5a0",
+  "background_color": "#047857",
+  "theme_color": "#047857",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/2933/2933758.png",
-      "sizes": "192x192",
-      "type": "image/png"
+      "src": "https://cdn-icons-png.flaticon.com/512/3593/3593414.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

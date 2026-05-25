@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SIMJAS PRO v3 - Sistem Manajemen Jadwal Cerdas</title>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;800;900&family=Noto+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+<style>
+:root{--a:#00e5a0;--a2:#00b8d4;--bg:#0d0d14;--card:#161622;--bd:#252535;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Noto Sans',sans-serif;background:var(--bg);color:#e2e2f0;}
+.hs{overflow-y:auto;}
+.hs::-webkit-scrollbar{width:6px;height:6px;}
+.hs::-webkit-scrollbar-track{background:transparent;}
+.hs::-webkit-scrollbar-thumb{background:#333;border-radius:10px;}
+.logo-hex{width:38px;height:38px;background:linear-gradient(135deg,#00e5a0,#00b8d4);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);display:flex;align-items:center;justify-content:center;box-shadow:0 0 20px rgba(0,229,160,0.4);flex-shrink:0;}
+.logo-sm{width:30px;height:30px;}
+.btn-p{background:linear-gradient(135deg,#00c87a,#00a8c4);color:#000;font-weight:700;border:none;cursor:pointer;transition:all .2s;font-family:'Exo 2',sans-serif;}
+.btn-p:disabled{opacity:0.6;cursor:not-allowed;filter:grayscale(1);}
+.btn-p:hover:not(:disabled){filter:brightness(1.12);transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,229,160,0.3);}
+.btn-d{background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.3);cursor:pointer;transition:all .2s;}
+.btn-d:hover{background:rgba(239,68,68,.2);}
+.nav-a{background:linear-gradient(135deg,rgba(0,229,160,.1),rgba(0,184,212,.06));border:1px solid rgba(0,229,160,.3)!important;color:#00e5a0!important;}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(6px);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;}
+.modal-box{background:#1a1a28;border:1px solid #303050;border-radius:16px;padding:24px;max-width:500px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.6);}
+.jadwal-cell{position:relative;}
+.jadwal-cell .ca{position:absolute;top:2px;right:2px;opacity:0;transition:opacity .15s;display:flex;gap:2px;z-index:10;}
+.jadwal-cell:hover .ca{opacity:1;}
+.cbtn{width:20px;height:20px;border-radius:4px;border:none;cursor:pointer;font-size:8px;display:flex;align-items:center;justify-content:center;}
+.cbtn-e{background:rgba(0,184,212,.85);color:#fff;}
+.cbtn-d{background:rgba(220,60,60,.85);color:#fff;}
+.cbtn-l{background:rgba(100,100,120,.7);color:#ddd;}
+.cbtn-l-on{background:rgba(245,158,11,.9);color:#fff;}
+.cell-locked{border-left:2px solid rgba(245,158,11,.5)!important;background:rgba(245,158,11,.05)!important;}
+.lock-badge{position:absolute;top:2px;left:3px;color:#f59e0b;font-size:8px;z-index:5;pointer-events:none;line-height:1;}
+.ain{animation:ain .25s ease forwards;}
+@keyframes ain{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+/* PDF Print Styling - Rapi dan Auto-Fit 1 Halaman per Kelas */
+.print-header {display:none;}
+@media print{
+  @page { size: landscape; margin: 10mm; }
+  body, #root, .hs, #print-area {background:#fff!important; color:#000!important; -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; overflow:visible!important; height:auto!important;}
+  .no-print, .modal-bg, #sidebar-spacer {display:none!important;}
+  #print-area {display:block!important; padding: 0 !important; width:100%;}
+  .print-header {display:block!important; text-align:center; padding:10px 0; border-bottom:3px solid #000; margin-bottom:15px;}
+  .print-header h1 {font-size:24px; font-weight:900; color:#000!important; text-transform:uppercase; letter-spacing:1px; margin-bottom:2px;}
+  .print-header h2 {font-size:14px; font-weight:700; color:#333!important; margin-bottom:2px;}
+  .print-header p {font-size:11px; color:#555!important;}
+  .class-wrap {page-break-inside:avoid; page-break-after:always; margin-bottom:0!important; background:#fff!important; border:none!important; width:100%;}
+  .class-wrap:last-child {page-break-after:auto;}
+  .class-title {background:#fff!important; color:#000!important; border:none!important; border-bottom:2px solid #000!important; padding:6px 0!important; margin-bottom: 8px; display:flex; justify-content:space-between; align-items:flex-end;}
+  .class-title span {color:#000!important; font-size: 16px!important;}
+  table {width:100%; border-collapse:collapse; margin-bottom:10px; border:2px solid #000!important; table-layout: fixed;}
+  th, td {border:1px solid #000!important; padding:4px!important; font-size:11px!important; overflow: hidden; word-wrap: break-word;}
+  .th-day {background:#f0f0f0!important; color:#000!important; font-weight:900!important; text-align:center;}
+  .td-time {background:#f9f9f9!important; color:#000!important; font-weight:700!important; text-align:center; white-space:nowrap; width: 60px;}
+  .td-off {background:#eee!important; color:#555!important; text-align:center;}
+  .td-upacara {background:#ffe0e0!important; color:#900!important; text-align:center; font-weight:800!important;}
+  .td-mapel {background:#e0fff4!important; text-align:center; vertical-align: middle;}
+  .td-mapel .mn {color:#000!important; font-weight:900!important; font-size:12px!important; display:block; margin-bottom:2px;}
+  .td-mapel .gn {color:#333!important; font-size:10px!important; display:block;}
+  .td-empty {background:#fff!important;}
+}
+</style>
+</head>
+<body>
+<div id="root">
+  <div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:14px">
+    <div style="width:48px;height:48px;background:linear-gradient(135deg,#00e5a0,#00b8d4);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);animation:s 1s linear infinite"></div>
+    <p style="color:#00e5a0;font-family:'Exo 2',sans-serif;font-weight:700;letter-spacing:3px;font-size:13px">MEMUAT SIMJAS PRO v3...</p>
+    <style>@keyframes s{from{transform:rotate(0)}to{transform:rotate(360deg)}}</style>
+  </div>
+</div>
+<script type="text/babel">
+const {useState,useEffect,useCallback,memo,useRef,useMemo} = React;
+
+const HARI = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu','Minggu'];
+const JP_MAX = 10; 
+const KLASS_COLORS = [
+  'from-emerald-500/20 to-teal-500/20 border-emerald-500/40 text-emerald-300',
+  'from-blue-500/20 to-cyan-500/20 border-blue-500/40 text-blue-300',
+  'from-purple-500/20 to-violet-500/20 border-purple-500/40 text-purple-300',
+  'from-amber-500/20 to-orange-500/20 border-amber-500/40 text-amber-300',
+  'from-rose-500/20 to-pink-500/20 border-rose-500/40 text-rose-300',
+  'from-indigo-500/20 to-blue-500/20 border-indigo-500/40 text-indigo-300',
+];
+
+const DEFAULT_KELAS = [
+  {id:'K1A',nama:'Kelas 1A',jamMasuk:'07:00',durasiJp:35,jpIstirahat:4,durasiIstirahat:15},
+  {id:'K1B',nama:'Kelas 1B',jamMasuk:'07:00',durasiJp:35,jpIstirahat:4,durasiIstirahat:15},
+];
+const DEFAULT_GURU = [
+  {id:'G1',nama:'Budi Santoso, S.Pd'},{id:'G2',nama:'Siti Aminah, S.Pd'},
+  {id:'G3',nama:'Ahmad Fauzi, S.Pd'},{id:'G4',nama:'Dewi Rahayu, S.Pd'},
+];
+const DEFAULT_MAPEL = [
+  {id:'M1',nama:'Matematika'},{id:'M2',nama:'Bahasa Indonesia'},
+  {id:'M3',nama:'IPAS'},{id:'M4',nama:'PJOK'},
+  {id:'M5',nama:'Seni Budaya'},{id:'M6',nama:'PAI'},
+];
+
+const LS = {
+  get:(k,d)=>{try{const v=localStorage.getItem('sj3_'+k);return v?JSON.parse(v):d;}catch{return d;}},
+  set:(k,v)=>{try{localStorage.setItem('sj3_'+k,JSON.stringify(v));}catch{}},
+};
+
+// ATURAN JP KETAT (Engine V4): Min 2, Max 4. Dilarang 1 JP. 3 JP utuh.
+const makeChunks = (jp) => {
+  if (jp <= 1) return []; // Dilarang 1 JP (Slot Mati)
+  if (jp === 2) return [2];
+  if (jp === 3) return [3]; // Prioritas utuh 3 JP
+  if (jp === 4) return [4];
+  if (jp === 5) return [3, 2]; // Dipecah 3 dan 2
+  if (jp === 6) return [3, 3];
+  if (jp === 7) return [4, 3];
+  if (jp === 8) return [4, 4];
+  if (jp === 9) return [3, 3, 3];
+  if (jp === 10) return [4, 3, 3];
+  
+  const ch = [];
+  let r = jp;
+  while (r > 0) {
+      if (r >= 4) { ch.push(4); r -= 4; }
+      else if (r === 3) { ch.push(3); r -= 3; }
+      else if (r === 2) { ch.push(2); r -= 2; }
+      else if (r === 1) {
+          if (ch.length > 0 && ch[ch.length - 1] < 4) { ch[ch.length - 1] += 1; r = 0; }
+          else { ch.push(2); r = 0; }
+      }
+  }
+  return ch;
+};
+
+const calcTime=(k,jp)=>{
+  if(!k?.jamMasuk) return '';
+  let [h,m]=k.jamMasuk.split(':').map(Number), tot=h*60+m;
+  for(let i=1;i<jp;i++){
+    tot+=parseInt(k.durasiJp||35);
+    if(i===parseInt(k.jpIstirahat||4) || i===(parseInt(k.jpIstirahat||4)+3)) { 
+        tot+=parseInt(k.durasiIstirahat||15);
+    }
+  }
+  const f=n=>`${String(Math.floor(n/60)%24).padStart(2,'0')}:${String(n%60).padStart(2,'0')}`;
+  return `${f(tot)}–${f(tot+parseInt(k.durasiJp||35))}`;
+};
+const kColor=(kelas,kId)=>{const i=kelas.findIndex(k=>k.id===kId);return KLASS_COLORS[i%KLASS_COLORS.length];};
+
+const Logo = memo(({small})=>(
+  <div style={{display:'flex',alignItems:'center',gap:10}}>
+    <div className={`logo-hex ${small?'logo-sm':''}`}>
+      <span style={{fontFamily:'Exo 2',fontWeight:900,fontSize:small?9:12,color:'#000',letterSpacing:-0.5}}>SJ</span>
+    </div>
+    <div>
+      <div style={{fontFamily:'Exo 2',fontWeight:900,fontSize:small?16:21,lineHeight:1,letterSpacing:-1}}>
+        <span style={{color:'#00e5a0',textShadow:'0 0 14px rgba(0,229,160,.5)'}}>SIM</span>
+        <span style={{color:'#fff'}}>JAS</span>
+        <span style={{color:'#00b8d4'}}>.</span>
+      </div>
+      <span style={{fontSize:7,background:'linear-gradient(135deg,#00e5a0,#00b8d4)',color:'#000',padding:'1px 5px',borderRadius:4,fontWeight:800,letterSpacing:2,fontFamily:'Exo 2'}}>PRO v3.5</span>
+    </div>
+  </div>
+));
+
+// --- KOMPONEN VALIDASI REALTIME ---
+const validateJadwal = (kelas, HARI, JP_MAX, slotConfig, jadwal, assignments, lockedSlots) => {
+    let reports = [];
+    let isAllValid = true;
+
+    kelas.forEach(k => {
+        let classValid = true;
+        let errors = [];
+        let mapelCounts = {};
+        
+        HARI.forEach(h => {
+            let consecutiveMapel = null;
+            let consecCount = 0;
+
+            for(let j=1; j<=JP_MAX; j++) {
+                if(slotConfig?.[k.id]?.[h]?.[j]) {
+                    const ass = jadwal?.[k.id]?.[h]?.[j];
+                    if(!ass) {
+                        errors.push(`Slot Kosong: ${h} JP ${j}`);
+                        classValid = false;
+                    } else if (!ass.isUpacara) {
+                        mapelCounts[ass.mapelId] = (mapelCounts[ass.mapelId] || 0) + 1;
+                        if (ass.mapelId === consecutiveMapel) {
+                            consecCount++;
+                            if (consecCount > 4) { errors.push(`Pelanggaran beruntun: Mapel lebih dari 4 JP di hari ${h}`); classValid = false; }
+                        } else {
+                            consecutiveMapel = ass.mapelId;
+                            consecCount = 1;
+                        }
+                    }
+                }
+            }
+        });
+
+        const classAssignments = assignments.filter(a => a.kelasId === k.id);
+        classAssignments.forEach(ca => {
+            const placed = mapelCounts[ca.mapelId] || 0;
+            if (placed < ca.jp) {
+                errors.push(`Kurang JP: Mapel baru terpasang ${placed} dari ${ca.jp} JP.`);
+                classValid = false;
+            } else if (placed > ca.jp) {
+                errors.push(`Kelebihan JP: Mapel terpasang ${placed} (Target: ${ca.jp} JP).`);
+                classValid = false;
+            }
+        });
+
+        reports.push({ kId: k.id, nama: k.nama, valid: classValid, errors });
+        if(!classValid) isAllValid = false;
+    });
+
+    let teacherConflicts = [];
+    HARI.forEach(h => {
+        for(let j=1; j<=JP_MAX; j++) {
+            let teacherMap = {};
+            kelas.forEach(k => {
+                const ass = jadwal?.[k.id]?.[h]?.[j];
+                if(ass && !ass.isUpacara && ass.guruId) {
+                    if(teacherMap[ass.guruId]) {
+                        teacherConflicts.push(`Guru bentrok: Mengajar di ${teacherMap[ass.guruId]} & ${k.nama} pada ${h} JP ${j}`);
+                        isAllValid = false;
+                        let c1 = reports.find(r => r.nama === teacherMap[ass.guruId]);
+                        let c2 = reports.find(r => r.kId === k.id);
+                        if(c1) { c1.valid = false; c1.errors.push(`Guru bentrok di hari ${h} JP ${j}`); }
+                        if(c2) { c2.valid = false; c2.errors.push(`Guru bentrok di hari ${h} JP ${j}`); }
+                    } else {
+                        teacherMap[ass.guruId] = k.nama;
+                    }
+                }
+            });
+        }
+    });
+
+    return { isAllValid, reports, teacherConflicts };
+};
+
+const ValidationPanel = ({ validationData }) => {
+    const [filter, setFilter] = useState('semua');
+    const [openDetail, setOpenDetail] = useState(null);
+
+    const filtered = validationData.reports.filter(r => {
+        if(filter === 'valid') return r.valid;
+        if(filter === 'invalid') return !r.valid;
+        return true;
+    });
+
+    const vCount = validationData.reports.filter(r=>r.valid).length;
+    const iCount = validationData.reports.filter(r=>!r.valid).length;
+
+    return (
+        <div style={{background:'#161622', border:'1px solid #252535', borderRadius:12, padding:16, marginBottom:20}}>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
+                <h3 style={{fontSize:14, fontWeight:900, color:'#fff', fontFamily:'Exo 2'}}><i className="fas fa-shield-alt" style={{color:'#00e5a0', marginRight:8}}/>STATUS VALIDASI JADWAL</h3>
+                <div style={{display:'flex', gap:8}}>
+                    <button onClick={()=>setFilter('semua')} style={{background:filter==='semua'?'rgba(0,184,212,.2)':'#0d0d14', color:filter==='semua'?'#00b8d4':'#aaa', border:'1px solid #333', padding:'4px 10px', borderRadius:6, fontSize:11, fontWeight:700}}>Semua ({validationData.reports.length})</button>
+                    <button onClick={()=>setFilter('valid')} style={{background:filter==='valid'?'rgba(0,229,160,.2)':'#0d0d14', color:filter==='valid'?'#00e5a0':'#aaa', border:'1px solid #333', padding:'4px 10px', borderRadius:6, fontSize:11, fontWeight:700}}>Valid ({vCount})</button>
+                    <button onClick={()=>setFilter('invalid')} style={{background:filter==='invalid'?'rgba(239,68,68,.2)':'#0d0d14', color:filter==='invalid'?'#f87171':'#aaa', border:'1px solid #333', padding:'4px 10px', borderRadius:6, fontSize:11, fontWeight:700}}>Bermasalah ({iCount})</button>
+                </div>
+            </div>
+
+            {validationData.teacherConflicts.length > 0 && (
+                <div style={{background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)', borderRadius:8, padding:10, marginBottom:12}}>
+                    <p style={{fontSize:12, color:'#fca5a5', fontWeight:700, marginBottom:4}}><i className="fas fa-exclamation-triangle"/> BENTROK GURU TERDETEKSI</p>
+                    <ul style={{fontSize:11, color:'#f87171', paddingLeft:16, listStyle:'disc'}}>
+                        {validationData.teacherConflicts.slice(0,5).map((err,i) => <li key={i}>{err}</li>)}
+                        {validationData.teacherConflicts.length > 5 && <li>...dan {validationData.teacherConflicts.length - 5} lainnya</li>}
+                    </ul>
+                </div>
+            )}
+
+            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:10}}>
+                {filtered.map(r => (
+                    <div key={r.kId} onClick={()=>!r.valid && setOpenDetail(openDetail===r.kId ? null : r.kId)} style={{background:'#0d0d14', border:`1px solid ${r.valid ? 'rgba(0,229,160,.3)' : 'rgba(239,68,68,.3)'}`, borderRadius:8, padding:12, cursor:r.valid?'default':'pointer'}}>
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                            <strong style={{fontSize:12, color:'#fff'}}>{r.nama}</strong>
+                            {r.valid ? 
+                                <span style={{fontSize:10, color:'#00e5a0', background:'rgba(0,229,160,.1)', padding:'2px 6px', borderRadius:4, fontWeight:700}}>✅ VALID</span> : 
+                                <span style={{fontSize:10, color:'#f87171', background:'rgba(239,68,68,.1)', padding:'2px 6px', borderRadius:4, fontWeight:700}}>❌ ERROR</span>
+                            }
+                        </div>
+                        {!r.valid && openDetail === r.kId && (
+                            <ul style={{fontSize:10, color:'#fca5a5', marginTop:8, paddingLeft:14, listStyle:'disc', background:'#161622', padding:'8px 8px 8px 20px', borderRadius:6}}>
+                                {r.errors.slice(0,4).map((e,i) => <li key={i} style={{marginBottom:3}}>{e}</li>)}
+                                {r.errors.length > 4 && <li>...+ {r.errors.length - 4} masalah lain</li>}
+                            </ul>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const PengaturanAkademik = memo(({akademik, setAkademik})=>{
+  const inp={background:'#0d0d14',border:'1px solid #333',borderRadius:8,padding:'10px 14px',fontSize:13,color:'#fff',outline:'none',width:'100%',fontFamily:'Exo 2',fontWeight:600};
+  return(
+    <div className="ain" style={{maxWidth:600}}>
+      <p style={{fontFamily:'Exo 2',fontWeight:900,fontSize:18,color:'#fff',marginBottom:16}}><i className="fas fa-university" style={{color:'#00e5a0',marginRight:8}}/>Identitas & Akademik</p>
+      <div style={{background:'#161622',border:'1px solid #252535',borderRadius:12,padding:24}}>
+        <div style={{marginBottom:16}}>
+          <label style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:2,display:'block',marginBottom:6}}>NAMA SEKOLAH / MADRASAH</label>
+          <input type="text" value={akademik.namaSekolah} onChange={e=>setAkademik({...akademik,namaSekolah:e.target.value})} style={inp} placeholder="Contoh: SD Negeri 1 Nusantara"/>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+          <div>
+            <label style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:2,display:'block',marginBottom:6}}>TAHUN AJARAN</label>
+            <select value={akademik.tahunAjaran} onChange={e=>setAkademik({...akademik,tahunAjaran:e.target.value})} style={inp}>
+              <option value="">-- Pilih Tahun Ajaran --</option>
+              <option value="2024/2025">2024/2025</option>
+              <option value="2025/2026">2025/2026</option>
+              <option value="2026/2027">2026/2027</option>
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:2,display:'block',marginBottom:6}}>SEMESTER</label>
+            <select value={akademik.semester} onChange={e=>setAkademik({...akademik,semester:e.target.value})} style={inp}>
+              <option value="">-- Pilih Semester --</option>
+              <option value="Ganjil">Ganjil</option>
+              <option value="Genap">Genap</option>
+            </select>
+          </div>
+        </div>
+        <div style={{marginTop:16,padding:'12px',background:'rgba(0,229,160,.05)',borderRadius:8,border:'1px dashed rgba(0,229,160,.3)'}}>
+          <p style={{fontSize:11,color:'#00e5a0'}}><i className="fas fa-info-circle"/> Identitas ini akan otomatis dicetak pada Header PDF, File Excel, dan Laporan Jadwal.</p>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const Dashboard = memo(({akademik,guru,kelas,mapel,assignments,isGenerated,setTab})=>{
+  const handleExport = () => {
+    const dt = {};
+    for(let i=0; i<localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if(key.startsWith('sj3_')) dt[key.replace('sj3_','')] = JSON.parse(localStorage.getItem(key));
+    }
+    const blob = new Blob([JSON.stringify(dt,null,2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; 
+    a.download=`SIMJAS_Backup_${akademik.tahunAjaran.replace('/','-')}_${new Date().toISOString().slice(0,10)}.json`; 
+    a.click();
+  };
+
+  const handleImport = (e) => {
+    const f = e.target.files[0]; if(!f) return;
+    const r = new FileReader();
+    r.onload = (evt) => {
+      try {
+          const d = JSON.parse(evt.target.result);
+          if(confirm('Timpa semua data saat ini dengan file backup yang diunggah?')){
+            localStorage.clear();
+            for(let k in d) localStorage.setItem('sj3_'+k, JSON.stringify(d[k]));
+            alert('Restore berhasil! Halaman akan dimuat ulang.');
+            window.location.reload();
+          }
+      } catch(err) { alert('Gagal! File backup tidak valid atau rusak.'); }
+      e.target.value = '';
+    };
+    r.readAsText(f);
+  };
+
+  const handleReset = () => {
+    if(confirm('⚠️ PERINGATAN BAHAYA: Semua data (Guru, Kelas, Mapel, Jadwal) akan DIHAPUS PERMANEN! Lanjutkan?')){
+      if(confirm('Apakah Anda benar-benar yakin ingin mereset aplikasi? Data tidak dapat dikembalikan.')){
+          localStorage.clear();
+          window.location.reload();
+      }
+    }
+  };
+
+  return(
+    <div className="ain" style={{display:'flex',flexDirection:'column',gap:20}}>
+      <div style={{background:'linear-gradient(135deg,#0d1f1a,#0d1520)',border:'1px solid #252535',borderRadius:16,padding:24,position:'relative',overflow:'hidden',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap'}}>
+        <div style={{position:'absolute',top:-40,right:-40,width:180,height:180,borderRadius:'50%',background:'radial-gradient(circle,rgba(0,229,160,.1),transparent 70%)',pointerEvents:'none'}}/>
+        <div>
+          <p style={{color:'#00e5a0',fontSize:10,fontWeight:700,letterSpacing:3,marginBottom:4,fontFamily:'Exo 2'}}>SISTEM MANAJEMEN JADWAL</p>
+          <h2 style={{fontSize:26,fontWeight:900,color:'#fff',fontFamily:'Exo 2'}}>{akademik.namaSekolah || 'Belum Diatur'}</h2>
+          <p style={{color:'#aaa',fontSize:13,marginTop:4}}><i className="fas fa-calendar-check" style={{marginRight:6,color:'#00b8d4'}}/> TA {akademik.tahunAjaran || '-'} · Semester {akademik.semester || '-'}</p>
+        </div>
+        <button onClick={()=>setTab('akademik')} className="btn-p" style={{padding:'8px 16px',borderRadius:8,fontSize:12,marginTop:10}}><i className="fas fa-edit"/> Edit Identitas</button>
+      </div>
+      
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:12}}>
+        {[{l:'Guru',v:guru.length,i:'fa-users',c:'#00b8d4'},{l:'Kelas',v:kelas.length,i:'fa-chalkboard',c:'#00e5a0'},
+          {l:'Mapel',v:mapel.length,i:'fa-book',c:'#a78bfa'},{l:'Total JP',v:assignments.reduce((s,a)=>s+a.jp,0),i:'fa-clock',c:'#fb923c'}
+        ].map(c=>(
+          <div key={c.l} style={{background:'#161622',border:'1px solid #252535',borderRadius:12,padding:'16px 18px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div>
+              <p style={{fontSize:9,color:'#555',fontWeight:700,letterSpacing:2,marginBottom:6,fontFamily:'Exo 2'}}>{c.l.toUpperCase()}</p>
+              <p style={{fontSize:28,fontWeight:900,color:c.c,fontFamily:'Exo 2',lineHeight:1}}>{c.v}</p>
+            </div>
+            <i className={`fas ${c.i}`} style={{fontSize:28,color:c.c,opacity:.25}}/>
+          </div>
+        ))}
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:12}}>
+        {isGenerated && (
+          <div style={{background:'rgba(0,229,160,.06)',border:'1px solid rgba(0,229,160,.25)',borderRadius:12,padding:'16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div>
+              <p style={{fontSize:13,color:'#6ee7b7',fontWeight:700,marginBottom:4}}><i className="fas fa-check-circle" style={{marginRight:6}}/>Jadwal Tersedia</p>
+              <p style={{fontSize:11,color:'#888'}}>Algoritma telah menyusun jadwal terbaru.</p>
+            </div>
+            <button onClick={()=>setTab('grid')} style={{background:'none',border:'1px solid #00e5a0',color:'#00e5a0',borderRadius:8,padding:'8px 14px',cursor:'pointer',fontWeight:700,fontSize:11}}>Lihat Detail</button>
+          </div>
+        )}
+
+        <div style={{background:'#161622',border:'1px solid #252535',borderRadius:12,padding:'16px'}}>
+          <p style={{fontSize:11,color:'#00b8d4',fontWeight:700,marginBottom:12,fontFamily:'Exo 2'}}><i className="fas fa-server" style={{marginRight:6}}/>DATABASE & BACKUP</p>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+            <button onClick={handleExport} className="btn-p" style={{padding:'8px',borderRadius:6,fontSize:11}}><i className="fas fa-download" style={{marginRight:4}}/> Ekspor JSON</button>
+            <label style={{background:'#1a1a28',color:'#00b8d4',border:'1px solid #00b8d4',padding:'8px',borderRadius:6,fontSize:11,cursor:'pointer',fontWeight:700,textAlign:'center'}}>
+              <i className="fas fa-upload" style={{marginRight:4}}/> Restore File
+              <input type="file" accept=".json" onChange={handleImport} style={{display:'none'}}/>
+            </label>
+            <button onClick={handleReset} className="btn-d" style={{padding:'8px',borderRadius:6,fontSize:11,fontWeight:700,gridColumn:'span 2'}}><i className="fas fa-trash-alt" style={{marginRight:4}}/> Hapus & Reset Semua Data</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const MasterData = memo(({kelas,setKelas,guru,setGuru,mapel,setMapel,assignments,setAssignments,guruOffDays,setGuruOffDays,jadwal})=>{
+  const [fKls,setFKls]=useState('');
+  const [fMapel,setFMapel]=useState('');
+  const [fGuru,setFGuru]=useState('');
+
+  const hapus=(tipe,id)=>{
+    if(!confirm('Hapus data ini? Data terkait (tugas & jadwal) juga ikut terhapus.')) return;
+    if(tipe==='kelas'){setKelas(p=>p.filter(k=>k.id!==id));setAssignments(p=>p.filter(a=>a.kelasId!==id));}
+    if(tipe==='mapel'){setMapel(p=>p.filter(m=>m.id!==id));setAssignments(p=>p.filter(a=>a.mapelId!==id));}
+    if(tipe==='guru'){setGuru(p=>p.filter(g=>g.id!==id));setAssignments(p=>p.filter(a=>a.guruId!==id));}
+  };
+  const toggleOff=(gId,hari)=>setGuruOffDays(p=>({...p,[gId]:{...p[gId],[hari]:!p[gId]?.[hari]}}));
+
+  const colBox={background:'#161622',border:'1px solid #252535',borderRadius:12,display:'flex',flexDirection:'column',height:500};
+  const colHead={padding:'14px 16px',borderBottom:'1px solid #252535'};
+  const inp={flex:1,background:'#0d0d14',border:'1px solid #333',borderRadius:8,padding:'7px 10px',fontSize:12,color:'#fff',outline:'none'};
+  const row={background:'#0d0d14',borderRadius:8,padding:'8px 12px',display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6};
+
+  return(
+    <div className="ain">
+      <p style={{fontFamily:'Exo 2',fontWeight:900,fontSize:18,color:'#fff',marginBottom:16}}><i className="fas fa-database" style={{color:'#00b8d4',marginRight:8}}/>Data Master</p>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))',gap:14}}>
+        <div style={colBox}>
+          <div style={colHead}>
+            <p style={{fontFamily:'Exo 2',fontWeight:700,fontSize:12,color:'#00e5a0',marginBottom:10}}><i className="fas fa-chalkboard" style={{marginRight:6}}/>DAFTAR KELAS</p>
+            <div style={{display:'flex',gap:6}}>
+              <input style={inp} value={fKls} onChange={e=>setFKls(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&fKls.trim()){setKelas(p=>[...p,{id:'K'+Date.now(),nama:fKls.trim(),jamMasuk:'07:00',durasiJp:35,jpIstirahat:4,durasiIstirahat:15}]);setFKls('');}}} placeholder="Nama kelas baru..."/>
+              <button className="btn-p" onClick={()=>{if(fKls.trim()){setKelas(p=>[...p,{id:'K'+Date.now(),nama:fKls.trim(),jamMasuk:'07:00',durasiJp:35,jpIstirahat:4,durasiIstirahat:15}]);setFKls('');}}} style={{padding:'0 12px',borderRadius:8,fontSize:12}}><i className="fas fa-plus"/></button>
+            </div>
+          </div>
+          <div className="hs" style={{flex:1,padding:'10px 12px'}}>
+            {kelas.map(k=>(
+              <div key={k.id} style={row}>
+                <span style={{fontSize:12,color:'#d4d4e8',fontWeight:500}}>{k.nama}</span>
+                <button onClick={()=>hapus('kelas',k.id)} style={{background:'none',border:'none',color:'#444',cursor:'pointer',fontSize:12}} onMouseOver={e=>e.target.style.color='#f87171'} onMouseOut={e=>e.target.style.color='#444'}><i className="fas fa-trash-alt"/></button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={colBox}>
+          <div style={colHead}>
+            <p style={{fontFamily:'Exo 2',fontWeight:700,fontSize:12,color:'#a78bfa',marginBottom:10}}><i className="fas fa-book" style={{marginRight:6}}/>MATA PELAJARAN</p>
+            <div style={{display:'flex',gap:6}}>
+              <input style={inp} value={fMapel} onChange={e=>setFMapel(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&fMapel.trim()){setMapel(p=>[...p,{id:'M'+Date.now(),nama:fMapel.trim()}]);setFMapel('');}}} placeholder="Nama pelajaran..."/>
+              <button onClick={()=>{if(fMapel.trim()){setMapel(p=>[...p,{id:'M'+Date.now(),nama:fMapel.trim()}]);setFMapel('');}}} style={{background:'linear-gradient(135deg,#7c3aed,#6d28d9)',color:'#fff',border:'none',borderRadius:8,padding:'0 12px',fontSize:12,fontWeight:700,cursor:'pointer'}}><i className="fas fa-plus"/></button>
+            </div>
+          </div>
+          <div className="hs" style={{flex:1,padding:'10px 12px'}}>
+            {mapel.map(m=>(
+              <div key={m.id} style={row}>
+                <span style={{fontSize:12,color:'#d4d4e8',fontWeight:500}}>{m.nama}</span>
+                <button onClick={()=>hapus('mapel',m.id)} style={{background:'none',border:'none',color:'#444',cursor:'pointer',fontSize:12}} onMouseOver={e=>e.target.style.color='#f87171'} onMouseOut={e=>e.target.style.color='#444'}><i className="fas fa-trash-alt"/></button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={colBox}>
+          <div style={colHead}>
+            <p style={{fontFamily:'Exo 2',fontWeight:700,fontSize:12,color:'#fbbf24',marginBottom:10}}><i className="fas fa-user-tie" style={{marginRight:6}}/>GURU & HARI LIBUR</p>
+            <div style={{display:'flex',gap:6}}>
+              <input style={inp} value={fGuru} onChange={e=>setFGuru(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&fGuru.trim()){setGuru(p=>[...p,{id:'G'+Date.now(),nama:fGuru.trim()}]);setFGuru('');}}} placeholder="Nama guru..."/>
+              <button onClick={()=>{if(fGuru.trim()){setGuru(p=>[...p,{id:'G'+Date.now(),nama:fGuru.trim()}]);setFGuru('');}}} style={{background:'linear-gradient(135deg,#d97706,#b45309)',color:'#fff',border:'none',borderRadius:8,padding:'0 12px',fontSize:12,fontWeight:700,cursor:'pointer'}}><i className="fas fa-plus"/></button>
+            </div>
+          </div>
+          <div className="hs" style={{flex:1,padding:'10px 12px'}}>
+            {guru.map(g=>{
+              const totalJp = assignments.filter(a => a.guruId === g.id).reduce((s,a) => s + a.jp, 0);
+              let placedJp = 0;
+              if (jadwal) {
+                  Object.keys(jadwal).forEach(kId => {
+                      HARI.forEach(h => {
+                          for(let j=1; j<=JP_MAX; j++) {
+                              const cell = jadwal[kId]?.[h]?.[j];
+                              if(cell && cell.guruId === g.id && !cell.isUpacara) placedJp++;
+                          }
+                      });
+                  });
+              }
+              
+              return (
+              <div key={g.id} style={{background:'#0d0d14',borderRadius:8,padding:'8px 12px',marginBottom:6}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:7}}>
+                  <span style={{fontSize:12,color:'#fff',fontWeight:500}}>
+                    {g.nama} 
+                    <span style={{color:placedJp===totalJp?'#00e5a0':'#fbbf24',fontSize:10,marginLeft:6,fontWeight:700}} title="Ditempatkan / Target Setting">
+                        ({placedJp} / {totalJp} JP)
+                    </span>
+                  </span>
+                  <button onClick={()=>hapus('guru',g.id)} style={{background:'none',border:'none',color:'#444',cursor:'pointer',fontSize:12}} onMouseOver={e=>e.target.style.color='#f87171'} onMouseOut={e=>e.target.style.color='#444'}><i className="fas fa-trash-alt"/></button>
+                </div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                  {['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].map(h=>(
+                    <button key={h} onClick={()=>toggleOff(g.id,h)} title="Klik untuk meliburkan guru di hari ini" style={guruOffDays[g.id]?.[h]?{background:'rgba(239,68,68,.2)',border:'1px solid rgba(239,68,68,.45)',color:'#fca5a5',fontWeight:700,fontSize:9,padding:'2px 6px',borderRadius:4,cursor:'pointer'}:{background:'transparent',border:'1px solid #333',color:'#555',fontSize:9,padding:'2px 6px',borderRadius:4,cursor:'pointer'}}>
+                      {h.slice(0,3)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )})}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const TugasMengajar = memo(({kelas,guru,mapel,assignments,setAssignments})=>{
+  const [mode,setMode]=useState('manual');
+  const [fGuru,setFGuru]=useState(guru[0]?.id||'');
+  const [fMapel,setFMapel]=useState(mapel[0]?.id||'');
+  const [fJp,setFJp]=useState(2); 
+  const [fBlok,setFBlok]=useState(false);
+  const [fPagi,setFPagi]=useState(false);
+  const [selKls,setSelKls]=useState({});
+  const [editId,setEditId]=useState(null);
+  const [srcKls,setSrcKls]=useState(kelas[0]?.id||'');
+  const [dstKls,setDstKls]=useState({});
+  const [tplMap,setTplMap]=useState({});
+  const [filterKls,setFilterKls]=useState('semua');
+
+  const gName=id=>guru.find(g=>g.id===id)?.nama||'—';
+  const mName=id=>mapel.find(m=>m.id===id)?.nama||'—';
+
+  const startEdit=a=>{
+    setMode('manual');setFGuru(a.guruId);setFMapel(a.mapelId);setFJp(a.jp);
+    setFBlok(a.isBlock);setFPagi(a.isPagi);setSelKls({[a.kelasId]:true});setEditId(a.id);
+  };
+  const cancelEdit=()=>{setEditId(null);setSelKls({});};
+  
+  const simpan=()=>{
+    if(!fGuru||!fMapel){alert('Pilih Guru dan Pelajaran!');return;}
+    const tgts=Object.keys(selKls).filter(k=>selKls[k]);
+    if(!tgts.length){alert('Centang minimal 1 kelas!');return;}
+    const jpInput = parseInt(fJp)||2;
+    if(jpInput < 2) { alert('PERINGATAN: Sesuai ketentuan operasional, Minimal harus 2 JP untuk mencegah slot pecahan 1 JP tersisa. Harap naikkan jumlah JP.'); return; }
+
+    const base={guruId:fGuru,mapelId:fMapel,jp:jpInput,isBlock:fBlok,isPagi:fPagi};
+    
+    if(editId){
+      if(tgts.length>1){alert('Mode edit: pilih 1 kelas saja.');return;}
+      if(assignments.find(a => a.kelasId===tgts[0] && a.mapelId===fMapel && a.id!==editId)) {
+          alert(`Pelajaran sudah terdaftar di kelas ini. Duplikasi dilarang.`); return;
+      }
+      setAssignments(p=>p.map(a=>a.id===editId?{...a,...base,kelasId:tgts[0]}:a));
+      setEditId(null);setSelKls({});alert('Tugas diperbarui!');
+    }else{
+      let dups = [];
+      tgts.forEach(t => { if(assignments.find(a => a.kelasId===t && a.mapelId===fMapel)) dups.push(kelas.find(k=>k.id===t)?.nama); });
+      if(dups.length > 0) {
+          alert(`GAGAL DISIMPAN: Pelajaran sudah terdaftar di kelas:\n- ${dups.join('\n- ')}\nData yang sama dilarang.`); return;
+      }
+      setAssignments(p=>[...p,...tgts.map(t=>({...base,id:'A'+Math.random(),kelasId:t}))]);
+      setSelKls({});alert(`Tugas ditambahkan ke ${tgts.length} kelas!`);
+    }
+  };
+  
+  const salinTpl=()=>{
+    const src=assignments.filter(a=>a.kelasId===srcKls);
+    const tgts=Object.keys(dstKls).filter(k=>dstKls[k]);
+    if(!src.length||!tgts.length){alert('Pilih sumber dan target!');return;}
+    let na=[], skipDups = 0;
+    tgts.forEach(t=>{
+      src.forEach(tc=>{
+        const exist = assignments.find(a => a.kelasId===t && a.mapelId===tc.mapelId) || na.find(a => a.kelasId===t && a.mapelId===tc.mapelId);
+        if(!exist) {
+            na.push({...tc,id:'A'+Math.random(),kelasId:t,guruId:tplMap[tc.id]||tc.guruId});
+        } else { skipDups++; }
+      });
+    });
+    setAssignments(p=>[...p,...na]);setDstKls({});setTplMap({});
+    alert(`Berhasil disalin: ${na.length} tugas.\nDilewati karena sudah ada: ${skipDups} tugas.`);
+  };
+
+  const list=filterKls==='semua'?assignments:assignments.filter(a=>a.kelasId===filterKls);
+  const tabBtn=(id,label)=>(
+    <button key={id} onClick={()=>setMode(id)} style={mode===id?{background:'linear-gradient(135deg,#00c87a,#00a8c4)',color:'#000',border:'none',borderRadius:8,padding:'7px 14px',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'Exo 2'}:{background:'#161622',color:'#888',border:'1px solid #252535',borderRadius:8,padding:'7px 14px',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+      {label}
+    </button>
+  );
+  const selStyle=on=>({cursor:'pointer',borderRadius:8,padding:'8px 10px',border:`1px solid ${on?'rgba(0,229,160,.4)':'#252535'}`,background:on?'rgba(0,229,160,.1)':'#0d0d14',color:on?'#00e5a0':'#666',fontSize:11,fontWeight:700,textAlign:'center',transition:'all .15s'});
+  const inp2={background:'#0d0d14',border:'1px solid #333',borderRadius:8,padding:'9px 12px',fontSize:12,color:'#fff',outline:'none',width:'100%'};
+
+  return(
+    <div className="ain" style={{display:'flex',flexDirection:'column',height:'100%',gap:12}}>
+      <div style={{display:'flex',flexWrap:'wrap',gap:6,alignItems:'center',flexShrink:0}}>
+        {tabBtn('manual','✏️ Input Manual')}
+        {tabBtn('template','📋 Salin Template')}
+        {tabBtn('daftar',`📄 Daftar (${assignments.length})`)}
+        {editId&&<button onClick={cancelEdit} className="btn-d" style={{borderRadius:8,padding:'7px 12px',fontSize:12,fontWeight:700}}>✕ Batal Edit</button>}
+      </div>
+
+      <div className="hs" style={{flex:1,background:'#161622',border:'1px solid #252535',borderRadius:12,padding:20}}>
+        {mode==='manual'&&(
+          <div style={{maxWidth:700}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:14,marginBottom:16}}>
+              <div>
+                <label style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:2,display:'block',marginBottom:6}}>GURU PENGAJAR</label>
+                <select value={fGuru} onChange={e=>setFGuru(e.target.value)} style={inp2}>{guru.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}</select>
+              </div>
+              <div>
+                <label style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:2,display:'block',marginBottom:6}}>MATA PELAJARAN</label>
+                <select value={fMapel} onChange={e=>setFMapel(e.target.value)} style={inp2}>{mapel.map(m=><option key={m.id} value={m.id}>{m.nama}</option>)}</select>
+              </div>
+              <div>
+                <label style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:2,display:'block',marginBottom:6}}>JP PER MINGGU</label>
+                <input type="number" min="2" max="24" value={fJp} onChange={e=>setFJp(e.target.value)} style={inp2}/>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:10,marginBottom:16}}>
+              {[{v:fBlok,s:setFBlok,l:'Satu Blok (Berurutan)',d:'Usahakan tidak dipecah antar hari'},{v:fPagi,s:setFPagi,l:'Khusus Pagi (JP 1–4)',d:'Diutamakan awal jam'}].map(o=>(
+                <label key={o.l} style={{flex:1,display:'flex',alignItems:'center',gap:10,cursor:'pointer',background:'#0d0d14',border:'1px solid #252535',borderRadius:8,padding:'10px 12px'}}>
+                  <input type="checkbox" checked={o.v} onChange={e=>o.s(e.target.checked)} style={{width:14,height:14,accentColor:'#00e5a0'}}/>
+                  <div><span style={{fontSize:12,color:'#fff',fontWeight:700,display:'block'}}>{o.l}</span><span style={{fontSize:10,color:'#555'}}>{o.d}</span></div>
+                </label>
+              ))}
+            </div>
+            <label style={{fontSize:11,color:'#fff',fontWeight:700,display:'block',marginBottom:10,fontFamily:'Exo 2'}}>KELAS TUJUAN</label>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(100px,1fr))',gap:6,marginBottom:16}}>
+              {kelas.map(k=>(
+                <div key={k.id} onClick={()=>setSelKls(p=>({...p,[k.id]:!p[k.id]}))} style={selStyle(selKls[k.id])}>
+                  {selKls[k.id]&&'✓ '}{k.nama}
+                </div>
+              ))}
+            </div>
+            <button onClick={simpan} className="btn-p" style={{width:'100%',padding:'13px',borderRadius:10,fontSize:13,fontFamily:'Exo 2',letterSpacing:1}}>
+              <i className={editId?"fas fa-save":"fas fa-plus"} style={{marginRight:8}}/>{editId?'PERBARUI TUGAS':'SIMPAN TUGAS BARU'}
+            </button>
+          </div>
+        )}
+        {mode==='template'&&(
+          <div style={{maxWidth:680}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+              <div>
+                <label style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:2,display:'block',marginBottom:6}}>1. KELAS SUMBER</label>
+                <select value={srcKls} onChange={e=>setSrcKls(e.target.value)} style={{...inp2,marginBottom:14,fontWeight:700}}>{kelas.map(k=><option key={k.id} value={k.id}>{k.nama}</option>)}</select>
+                <label style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:2,display:'block',marginBottom:6}}>2. KELAS TARGET</label>
+                <div className="hs" style={{maxHeight:240}}>
+                  {kelas.filter(k=>k.id!==srcKls).map(k=>(
+                    <div key={k.id} onClick={()=>setDstKls(p=>({...p,[k.id]:!p[k.id]}))} style={{...selStyle(dstKls[k.id]),marginBottom:5,textAlign:'left',padding:'8px 12px'}}>
+                      {dstKls[k.id]?'✓ ':''}{k.nama}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:2,display:'block',marginBottom:6}}>3. SESUAIKAN GURU (OPSIONAL)</label>
+                <div className="hs" style={{maxHeight:300}}>
+                  {assignments.filter(a=>a.kelasId===srcKls).map(ass=>(
+                    <div key={ass.id} style={{background:'#0d0d14',borderRadius:8,padding:'8px 10px',marginBottom:6}}>
+                      <p style={{fontSize:11,fontWeight:700,color:'#00e5a0',marginBottom:5}}>{mName(ass.mapelId)} <span style={{color:'#555',fontWeight:400}}>({ass.jp} JP)</span></p>
+                      <select value={tplMap[ass.id]||ass.guruId} onChange={e=>setTplMap(p=>({...p,[ass.id]:e.target.value}))} style={{...inp2,fontSize:11,padding:'6px 10px'}}>
+                        {guru.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <button onClick={salinTpl} className="btn-p" style={{width:'100%',padding:'13px',borderRadius:10,fontSize:13,marginTop:14,fontFamily:'Exo 2',letterSpacing:1}}>
+              <i className="fas fa-copy" style={{marginRight:8}}/>JALANKAN SALIN TEMPLATE
+            </button>
+          </div>
+        )}
+        {mode==='daftar'&&(
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+              <span style={{fontSize:13,fontWeight:700,color:'#fff',fontFamily:'Exo 2'}}>Total: {list.length} tugas</span>
+              <select value={filterKls} onChange={e=>setFilterKls(e.target.value)} style={{background:'#0d0d14',border:'1px solid #333',borderRadius:8,padding:'7px 12px',fontSize:12,color:'#fff',outline:'none'}}>
+                <option value="semua">Semua Kelas</option>
+                {kelas.map(k=><option key={k.id} value={k.id}>{k.nama}</option>)}
+              </select>
+            </div>
+            <div className="hs" style={{maxHeight:400}}>
+              <table style={{width:'100%',borderCollapse:'collapse',minWidth:560}}>
+                <thead style={{background:'#0d0d14',position:'sticky',top:0}}>
+                  <tr>{['Kelas','Guru','Mapel','JP','Opsi','Aksi'].map(h=><th key={h} style={{padding:'10px 8px',fontSize:10,color:'#555',fontWeight:700,textAlign:'left',borderBottom:'1px solid #252535'}}>{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {list.map(a=>(
+                    <tr key={a.id} style={{borderBottom:'1px solid #1e1e2e'}}>
+                      <td style={{padding:'9px 8px'}}><span className={`bg-gradient-to-r border ${kColor(kelas,a.kelasId)}`} style={{padding:'2px 8px',borderRadius:5,fontSize:10,fontWeight:700}}>{kelas.find(k=>k.id===a.kelasId)?.nama||'—'}</span></td>
+                      <td style={{padding:'9px 8px',fontSize:12,color:'#aaa'}}>{gName(a.guruId)}</td>
+                      <td style={{padding:'9px 8px',fontSize:12,color:'#fff',fontWeight:700}}>{mName(a.mapelId)}</td>
+                      <td style={{padding:'9px 8px',fontSize:13,color:'#00b8d4',fontWeight:700,textAlign:'center'}}>{a.jp}</td>
+                      <td style={{padding:'9px 8px'}}>
+                        <div style={{display:'flex',gap:4}}>
+                          {a.isBlock&&<span style={{fontSize:9,padding:'2px 5px',borderRadius:4,background:'rgba(139,92,246,.15)',border:'1px solid rgba(139,92,246,.3)',color:'#c4b5fd'}}>BLOK</span>}
+                          {a.isPagi&&<span style={{fontSize:9,padding:'2px 5px',borderRadius:4,background:'rgba(245,158,11,.15)',border:'1px solid rgba(245,158,11,.3)',color:'#fbbf24'}}>PAGI</span>}
+                        </div>
+                      </td>
+                      <td style={{padding:'9px 8px'}}>
+                        <div style={{display:'flex',gap:5}}>
+                          <button onClick={()=>startEdit(a)} style={{background:'rgba(0,184,212,.15)',color:'#00b8d4',border:'1px solid rgba(0,184,212,.3)',borderRadius:6,padding:'4px 8px',fontSize:11,cursor:'pointer'}}><i className="fas fa-pen"/></button>
+                          <button onClick={()=>setAssignments(p=>p.filter(x=>x.id!==a.id))} style={{background:'rgba(239,68,68,.1)',color:'#f87171',border:'1px solid rgba(239,68,68,.2)',borderRadius:6,padding:'4px 8px',fontSize:11,cursor:'pointer'}}><i className="fas fa-trash"/></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
+
+const PengaturanJam = memo(({kelas,setKelas})=>{
+  const [aktif,setAktif]=useState(kelas[0]?.id||'');
+  const cur=kelas.find(k=>k.id===aktif)||{};
+  const upd=(f,v)=>setKelas(p=>p.map(k=>k.id===aktif?{...k,[f]:v}:k));
+  const inp={background:'#0d0d14',border:'1px solid #333',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#fff',outline:'none',width:'100%'};
+  return(
+    <div className="ain">
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <p style={{fontFamily:'Exo 2',fontWeight:900,fontSize:18,color:'#fff'}}><i className="fas fa-clock" style={{color:'#fbbf24',marginRight:8}}/>Pengaturan Jam</p>
+        <select value={aktif} onChange={e=>setAktif(e.target.value)} style={{...inp,width:'auto',fontSize:12,fontWeight:700,padding:'8px 12px'}}>{kelas.map(k=><option key={k.id} value={k.id}>{k.nama}</option>)}</select>
+      </div>
+      <div style={{background:'#161622',border:'1px solid #252535',borderRadius:12,padding:20,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:16}}>
+        {[{l:'Jam Masuk',f:'jamMasuk',t:'time'},{l:'Durasi 1 JP (menit)',f:'durasiJp',t:'number'},{l:'Istirahat usai JP ke-',f:'jpIstirahat',t:'number'},{l:'Lama Istirahat (menit)',f:'durasiIstirahat',t:'number'}].map(o=>(
+          <div key={o.f}>
+            <label style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:2,display:'block',marginBottom:6}}>{o.l.toUpperCase()}</label>
+            <input type={o.t} value={cur[o.f]||''} onChange={e=>upd(o.f,e.target.value)} style={inp}/>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+});
+
+const Ketersediaan = memo(({kelas,slotConfig,setSlotConfig})=>{
+  const [aktif,setAktif]=useState(kelas[0]?.id||'');
+  const [showTpl,setShowTpl]=useState(false);
+  const [tplSrc,setTplSrc]=useState(kelas.find(k=>k.id!==aktif)?.id||'');
+
+  if(!slotConfig||!slotConfig[aktif]) return null;
+  const toggle=(hari,jp)=>setSlotConfig(p=>({...p,[aktif]:{...p[aktif],[hari]:{...p[aktif][hari],[jp]:!p[aktif][hari][jp]}}}));
+
+  const terapkan=()=>{
+    if(tplSrc===aktif){alert('Sumber dan target sama!');return;}
+    if(!slotConfig[tplSrc]){alert('Konfigurasi sumber tidak ada.');return;}
+    if(!confirm(`Salin pengaturan slot dari kelas sumber ke target?`)) return;
+    setSlotConfig(p=>({...p,[aktif]:JSON.parse(JSON.stringify(p[tplSrc]))}));
+    setShowTpl(false);alert('Template berhasil diterapkan!');
+  };
+
+  return(
+    <div className="ain" style={{display:'flex',flexDirection:'column',height:'100%',gap:12}}>
+      <div style={{display:'flex',flexWrap:'wrap',justifyContent:'space-between',alignItems:'center',gap:10,flexShrink:0}}>
+        <p style={{fontFamily:'Exo 2',fontWeight:900,fontSize:18,color:'#fff'}}><i className="fas fa-toggle-on" style={{color:'#00e5a0',marginRight:8}}/>Ketersediaan Jam</p>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={()=>setShowTpl(!showTpl)} style={{background:showTpl?'rgba(0,184,212,.15)':'#161622',color:'#00b8d4',border:'1px solid rgba(0,184,212,.3)',borderRadius:8,padding:'7px 14px',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+            <i className="fas fa-copy" style={{marginRight:6}}/>Salin Template
+          </button>
+          <select value={aktif} onChange={e=>setAktif(e.target.value)} style={{background:'#161622',border:'1px solid #333',borderRadius:8,padding:'7px 12px',fontSize:12,fontWeight:700,color:'#fff',outline:'none'}}>
+            {kelas.map(k=><option key={k.id} value={k.id}>{k.nama}</option>)}
+          </select>
+        </div>
+      </div>
+      
+      {showTpl&&(
+        <div style={{background:'rgba(0,184,212,.05)',border:'1px solid rgba(0,184,212,.25)',borderRadius:10,padding:'14px 16px',flexShrink:0}}>
+          <div style={{display:'flex',flexWrap:'wrap',gap:10,alignItems:'flex-end'}}>
+            <div style={{flex:1,minWidth:180}}>
+              <label style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:2,display:'block',marginBottom:5}}>AMBIL DARI</label>
+              <select value={tplSrc} onChange={e=>setTplSrc(e.target.value)} style={{background:'#0d0d14',border:'1px solid #333',borderRadius:8,padding:'8px 12px',fontSize:12,fontWeight:700,color:'#fff',outline:'none',width:'100%'}}>
+                {kelas.filter(k=>k.id!==aktif).map(k=><option key={k.id} value={k.id}>{k.nama}</option>)}
+              </select>
+            </div>
+            <button onClick={terapkan} className="btn-p" style={{padding:'9px 18px',borderRadius:8,fontSize:12}}>Terapkan</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{flex:1,background:'#161622',border:'1px solid #252535',borderRadius:12,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+        <div className="hs" style={{flex:1}}>
+          <table style={{width:'100%',borderCollapse:'collapse',minWidth:700}}>
+            <thead style={{background:'#0d0d14',position:'sticky',top:0,zIndex:10}}>
+              <tr style={{borderBottom:'1px solid #252535'}}>
+                <th style={{padding:'10px 12px',fontSize:11,color:'#555',fontWeight:700,width:60,borderRight:'1px solid #252535'}}>JP</th>
+                {HARI.map(h=><th key={h} style={{padding:'10px 8px',fontSize:11,color:'#888',fontWeight:700,textAlign:'center'}}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({length:JP_MAX}).map((_,i)=>{
+                const jp = i+1;
+                return(
+                <tr key={jp} style={{borderBottom:'1px solid #1e1e2e'}}>
+                  <td style={{padding:'10px 12px',fontSize:12,fontWeight:700,color:'#555',borderRight:'1px solid #252535',background:'#111118',textAlign:'center'}}>JP {jp}</td>
+                  {HARI.map(hari=>{
+                    const on=slotConfig[aktif]?.[hari]?.[jp];
+                    return(
+                      <td key={hari} style={{textAlign:'center',padding:'10px 8px',cursor:'pointer'}} onClick={()=>toggle(hari,jp)}>
+                        <div style={{margin:'0 auto',width:44,height:22,borderRadius:11,position:'relative',background:on?'linear-gradient(90deg,#00e5a0,#00b8d4)':'#1e1e2e',border:on?'none':'1px solid #333',transition:'background .2s'}}>
+                          <div style={{position:'absolute',top:2,left:on?24:2,width:18,height:18,borderRadius:9,background:'#fff',transition:'left .18s'}}/>
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              )})}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ENGINE GENERATE BARU V4 (Backtracking & Smart Swap + Menyimpan Riwayat)
+const AutoGenerate = memo(({akademik,kelas,guru,mapel,assignments,slotConfig,guruOffDays,setJadwal,setIsGenerated,setTab,lockedSlots,jadwal,history,setHistory})=>{
+  const [log,setLog]=useState(''); const [status,setStatus]=useState('idle'); const [progress,setProgress]=useState(0);
+  const mName=id=>mapel.find(m=>m.id===id)?.nama||id; const kName=id=>kelas.find(k=>k.id===id)?.nama||id;
+
+  const runGenerator=async()=>{
+    if(!akademik.tahunAjaran) { alert("Harap lengkapi TAHUN AJARAN!"); setTab('akademik'); return; }
+    
+    setStatus('processing'); setLog('Inisialisasi Algoritma Backtracking v4...'); setProgress(5);
+    await new Promise(r=>setTimeout(r,100)); 
+    
+    let nj={}, gt={}, errors=[];
+
+    // 1. Setup Grid Dasar
+    kelas.forEach(k=>{
+      nj[k.id]={};
+      HARI.forEach(h=>{
+        nj[k.id][h]={};
+        if(!gt[h]) gt[h]={};
+        for(let jp=1;jp<=JP_MAX;jp++){
+          nj[k.id][h][jp]=null;
+          if(!gt[h][jp]) gt[h][jp]={};
+        }
+      });
+      if(k.jamMasuk<='08:00'&&slotConfig?.[k.id]?.['Senin']?.[1]){
+        nj[k.id]['Senin'][1]={isUpacara:true,mapelId:'UPC'};
+      }
+    });
+
+    // 2. Proteksi Manual Slots (Locked)
+    kelas.forEach(k=>{
+      HARI.forEach(h=>{
+        for(let jp=1;jp<=JP_MAX;jp++){
+          if(lockedSlots?.[k.id]?.[h]?.[jp] && jadwal?.[k.id]?.[h]?.[jp]){
+            const entry=jadwal[k.id][h][jp];
+            if(!entry.isUpacara){
+              nj[k.id][h][jp]={...entry};
+              if(entry.guruId) gt[h][jp][entry.guruId]=true;
+            }
+          }
+        }
+      });
+    });
+
+    // 3. Persiapan Chunks Cerdas
+    setLog('Menyusun prioritas Mapel Ganjil (3 JP) & Guru Eksternal...'); setProgress(20);
+    await new Promise(r=>setTimeout(r,50));
+    
+    let chunksToPlace = [];
+    let guruClasses = {};
+    assignments.forEach(a => { if(!guruClasses[a.guruId]) guruClasses[a.guruId] = new Set(); guruClasses[a.guruId].add(a.kelasId); });
+
+    const priorityKeywords = ['olahraga', 'pjok', 'inggris', 'akidah', 'quran', 'ski', 'fikih', 'arab', 'agama'];
+    const isPriority = (mId) => priorityKeywords.some(kw => mName(mId).toLowerCase().includes(kw));
+    
+    assignments.forEach(ass => {
+        let lockedJp = 0;
+        HARI.forEach(h => { for(let j=1; j<=JP_MAX; j++) if(lockedSlots?.[ass.kelasId]?.[h]?.[j] && nj[ass.kelasId][h][j]?.mapelId === ass.mapelId) lockedJp++; });
+        let rem = ass.jp - lockedJp;
+        if(rem >= 2) {
+            let isUmum = guruClasses[ass.guruId].size > 1; // Guru bidang studi
+            let cLengths = makeChunks(rem); // Mencegah 1 JP
+            cLengths.forEach(len => {
+                chunksToPlace.push({ id: ass.id, kId: ass.kelasId, mapelId: ass.mapelId, guruId: ass.guruId, len: len, isUmum: isUmum, isPriority: isPriority(ass.mapelId) });
+            });
+        } else if (rem === 1) {
+            errors.push(`Aturan Dilanggar: Mapel ${mName(ass.mapelId)} di ${kName(ass.kelasId)} tersisa 1 JP aktif. Wajib min 2 JP.`);
+        }
+    });
+
+    chunksToPlace.sort((a,b) => {
+        if(a.len === 3 && b.len !== 3) return -1; // Prioritas absolut 3 JP
+        if(b.len === 3 && a.len !== 3) return 1;
+        if(a.isPriority !== b.isPriority) return a.isPriority ? -1 : 1; 
+        if(a.isUmum !== b.isUmum) return a.isUmum ? -1 : 1; // Guru keliling
+        return b.len - a.len; // Blok besar dulu
+    });
+
+    // 4. Constraint Satisfaction Placement (Scoring Matrix)
+    const isRangeValid = (kId, h, startJp, size, gId) => {
+        for(let i=0; i<size; i++) {
+            if(!slotConfig?.[kId]?.[h]?.[startJp+i]) return false;
+            if(nj[kId][h][startJp+i] !== null) return false;
+            if(gt[h][startJp+i][gId]) return false;
+        }
+        return true;
+    };
+
+    setLog('Menempatkan Slot dengan Smart Backtracking Score...'); setProgress(40);
+    
+    for(let i=0; i<chunksToPlace.length; i++) {
+        let chunk = chunksToPlace[i];
+        let bestH = null, bestS = null, bestScore = Infinity;
+        let days = [...HARI].sort(()=>Math.random()-0.5); 
+        
+        for(let h of days) {
+            if (guruOffDays[chunk.guruId]?.[h]) continue;
+            let hasSameMapel = false;
+            for(let j=1; j<=JP_MAX; j++) if (nj[chunk.kId][h][j] && nj[chunk.kId][h][j].mapelId === chunk.mapelId) hasSameMapel = true;
+
+            for(let s=1; s<=JP_MAX - chunk.len + 1; s++) {
+                if (isRangeValid(chunk.kId, h, s, chunk.len, chunk.guruId)) {
+                    let score = 0; 
+                    
+                    if (hasSameMapel) score += 5000;
+                    if(!chunk.isPriority && !chunk.isUmum) score += (s * 50); // Top-down wali kelas
+                    
+                    let prevEmpty = (s > 1) && slotConfig?.[chunk.kId]?.[h]?.[s-1] && !nj[chunk.kId][h][s-1];
+                    let prevPrevEmpty = (s > 2) && slotConfig?.[chunk.kId]?.[h]?.[s-2] && !nj[chunk.kId][h][s-2];
+                    if (prevEmpty && !prevPrevEmpty) score += 2000;
+
+                    let nextEmpty = (s + chunk.len <= JP_MAX) && slotConfig?.[chunk.kId]?.[h]?.[s+chunk.len] && !nj[chunk.kId][h][s+chunk.len];
+                    let nextNextEmpty = (s + chunk.len + 1 <= JP_MAX) && slotConfig?.[chunk.kId]?.[h]?.[s+chunk.len+1] && !nj[chunk.kId][h][s+chunk.len+1];
+                    if (nextEmpty && !nextNextEmpty) score += 2000;
+
+                    if (score < bestScore) { bestScore = score; bestH = h; bestS = s; }
+                }
+            }
+        }
+
+        if (bestH) {
+            for(let c=0; c<chunk.len; c++) {
+                nj[chunk.kId][bestH][bestS+c] = {id: chunk.id, mapelId: chunk.mapelId, guruId: chunk.guruId};
+                gt[bestH][bestS+c][chunk.guruId] = true;
+            }
+        } else {
+            errors.push(`Bentrok Data: Blok ${chunk.len} JP ${mName(chunk.mapelId)} di ${kName(chunk.kId)} gagal ditempatkan. (Dibutuhkan Swap Manual)`);
+        }
+        
+        if(i%10===0) { setProgress(40 + Math.floor((i/chunksToPlace.length)*40)); await new Promise(r=>setTimeout(r,5)); }
+    }
+
+    setLog('Finalisasi Validasi Integritas...'); setProgress(95);
+    await new Promise(r=>setTimeout(r,200));
+
+    setProgress(100); setJadwal(nj); setIsGenerated(true);
+    
+    // MENYIMPAN KE RIWAYAT (Di-restore sesuai permintaan pengguna)
+    const historyEntry = {
+        id: 'H'+Date.now(),
+        name: `Jadwal AI - ${new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}`,
+        time: new Date().toLocaleTimeString('id-ID'),
+        data: nj
+    };
+    setHistory(prev => [historyEntry, ...prev].slice(0, 5));
+
+    setStatus('done');
+    setLog(errors.length>0 ? '⚠️ Generate Selesai dengan sedikit Kendala/Bentrok:\n\n- '+errors.join('\n- ') : '✅ Sempurna! Seluruh jadwal berhasil disusun tanpa bentrok maupun sisa slot mati (1 JP).');
+  };
+
+  return(
+    <div className="ain" style={{maxWidth:600,margin:'32px auto',textAlign:'center',background:'#161622',border:'1px solid #252535',borderRadius:24,padding:36}}>
+      <div className="logo-hex" style={{width:60,height:60,margin:'0 auto 20px',boxShadow:'0 0 36px rgba(0,229,160,.3)'}}><i className="fas fa-robot" style={{color:'#000',fontSize:24}}/></div>
+      <h2 style={{fontFamily:'Exo 2',fontWeight:900,fontSize:22,color:'#fff',marginBottom:8}}>AI SCHEDULER v4 (Smart Engine)</h2>
+      <p style={{fontSize:12,color:'#555',marginBottom:16,lineHeight:1.7}}>Mengeliminasi slot mati (1 JP), mengutamakan blok ganjil (3 JP), top-down mapel wali kelas, dan integrasi validasi cerdas.</p>
+
+      {status==='processing' && (
+          <div style={{marginBottom:20}}>
+            <div style={{width:'100%',height:8,background:'#0d0d14',borderRadius:4,overflow:'hidden'}}><div style={{width:`${progress}%`,height:'100%',background:'linear-gradient(90deg,#00e5a0,#00b8d4)',transition:'width .3s'}}/></div>
+            <p style={{fontSize:11,color:'#00e5a0',marginTop:8,fontWeight:700,animation:'pulse 1.5s infinite'}}>{log}</p>
+          </div>
+      )}
+
+      <button onClick={runGenerator} disabled={status==='processing'} className="btn-p" style={{width:'100%',padding:'15px',borderRadius:12,fontSize:14,fontFamily:'Exo 2',letterSpacing:2}}>
+        <i className={status==='processing'?"fas fa-circle-notch fa-spin":"fas fa-bolt"} style={{marginRight:8}}/>
+        {status==='processing'?'MENYUSUN JADWAL...':'GENERATE JADWAL SEKARANG'}
+      </button>
+
+      {status==='done' && (
+        <div style={{marginTop:16,textAlign:'left',padding:'12px 14px',borderRadius:10,fontSize:11,lineHeight:1.7,whiteSpace:'pre-line',border:'1px solid',background:log.includes('⚠️')?'rgba(245,158,11,.07)':'rgba(0,229,160,.07)',borderColor:log.includes('⚠️')?'rgba(245,158,11,.25)':'rgba(0,229,160,.25)',color:log.includes('⚠️')?'#fbbf24':'#6ee7b7'}}>
+          {log}
+        </div>
+      )}
+
+      {/* RIWAYAT GENERATE (Di-restore sesuai permintaan pengguna) */}
+      {history.length > 0 && (
+          <div style={{marginTop:24,textAlign:'left'}}>
+              <p style={{fontSize:12,color:'#aaa',fontWeight:700,marginBottom:10,fontFamily:'Exo 2'}}>RIWAYAT GENERATE SEBELUMNYA</p>
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                  {history.map((h, i) => (
+                      <div key={h.id} style={{background:'#0d0d14',border:'1px solid #333',borderRadius:8,padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                          <div>
+                              <p style={{fontSize:12,color:'#fff',fontWeight:700}}>{h.name}</p>
+                          </div>
+                          <button onClick={()=>{
+                              if(confirm(`Ganti jadwal aktif ke ${h.name}?`)){
+                                  setJadwal(h.data); setTab('grid');
+                              }
+                          }} className="btn-p" style={{padding:'6px 12px',borderRadius:6,fontSize:10}}>Tampilkan</button>
+                      </div>
+                  ))}
+              </div>
+          </div>
+      )}
+    </div>
+  );
+});
+
+// HASIL & CETAK
+const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfig,isGenerated,setJadwal,lockedSlots,setLockedSlots})=>{
+  const [viewMode,setViewMode]=useState('semua_kelas');
+  const [selId,setSelId]=useState(kelas[0]?.id||'');
+  const [editCell,setEditCell]=useState(null);
+  const [editData,setEditData]=useState({mapelId:'',guruId:''});
+  const [lockMode,setLockMode]=useState(false);
+
+  const gName=id=>guru.find(g=>g.id===id)?.nama||'—'; const mName=id=>mapel.find(m=>m.id===id)?.nama||'—'; const kName=id=>kelas.find(k=>k.id===id)?.nama||'—';
+
+  // Realtime Validation Logic
+  const validationData = useMemo(() => validateJadwal(kelas, HARI, JP_MAX, slotConfig, jadwal, assignments, lockedSlots), [kelas, slotConfig, jadwal, assignments, lockedSlots]);
+
+  const openEdit=(kId,hari,jp)=>{
+    const cur=jadwal[kId]?.[hari]?.[jp];
+    setEditData({mapelId:cur?.mapelId||'',guruId:cur?.guruId||''});
+    setEditCell({kId,hari,jp});
+  };
+
+  const handleMapelChange = (newMapelId) => {
+      let matchingAss = assignments.find(a => a.kelasId === editCell.kId && a.mapelId === newMapelId);
+      setEditData({mapelId: newMapelId, guruId: matchingAss ? matchingAss.guruId : ''});
+  };
+
+  const saveEdit=()=>{
+    if(!editCell) return; const {kId,hari,jp}=editCell;
+    setJadwal(prev=>{
+      const nj=JSON.parse(JSON.stringify(prev));
+      nj[kId][hari][jp]=editData.mapelId?{id:'m'+Date.now(),mapelId:editData.mapelId,guruId:editData.guruId}:null;
+      return nj;
+    });
+    if(!editData.mapelId) setLockedSlots(prev=>{const n=JSON.parse(JSON.stringify(prev||{}));if(n[kId]?.[hari])n[kId][hari][jp]=false;return n;});
+    setEditCell(null);
+  };
+
+  const delCell=(kId,hari,jp)=>{
+    if(!confirm('Hapus isi jam ini?')) return;
+    setJadwal(prev=>{const nj=JSON.parse(JSON.stringify(prev));nj[kId][hari][jp]=null;return nj;});
+  };
+
+  // EXPORT EXCEL BARU DENGAN SHEETJS (Multi-Sheet Cerdas)
+  const doExcel=()=>{
+    if(typeof XLSX === 'undefined') { alert("Pustaka SheetJS belum dimuat. Periksa koneksi internet Anda."); return; }
+    if(!isGenerated) { alert("Jadwal belum digenerate."); return; }
+
+    const wb = XLSX.utils.book_new();
+    
+    kelas.forEach(k => {
+        let ws_data = [
+            [`JADWAL PELAJARAN ${k.nama.toUpperCase()}`],
+            [`${akademik.namaSekolah} | TA: ${akademik.tahunAjaran} | SMT: ${akademik.semester}`],
+            [],
+            ['Hari', 'JP', 'Waktu', 'Mata Pelajaran', 'Nama Guru']
+        ];
+
+        HARI.forEach(h => {
+            for(let jp=1; jp<=JP_MAX; jp++) {
+                if(!slotConfig?.[k.id]?.[h]?.[jp]) continue; 
+                let ass = jadwal[k.id]?.[h]?.[jp];
+                let waktu = calcTime(k, jp);
+                
+                if(ass?.isUpacara) {
+                    ws_data.push([h, `JP ${jp}`, waktu, 'UPACARA', '-']);
+                } else if(ass) {
+                    ws_data.push([h, `JP ${jp}`, waktu, mName(ass.mapelId), gName(ass.guruId)]);
+                } else {
+                    ws_data.push([h, `JP ${jp}`, waktu, 'KOSONG', '-']);
+                }
+            }
+        });
+
+        let ws = XLSX.utils.aoa_to_sheet(ws_data);
+        ws['!cols'] = [{wch: 10}, {wch: 8}, {wch: 15}, {wch: 30}, {wch: 35}];
+        
+        let safeName = k.nama.substring(0,31).replace(/[\\/?*\[\]]/g, '_'); 
+        XLSX.utils.book_append_sheet(wb, ws, safeName);
+    });
+
+    XLSX.writeFile(wb, `Jadwal_${akademik.tahunAjaran.replace('/','-')}_${new Date().getTime()}.xlsx`);
+  };
+
+  const renderTable=(id,type)=>{
+    const kObj=kelas.find(k=>k.id===id);
+    const judul=type==='kelas'?kName(id):`Jadwal Mengajar: ${gName(id)}`;
+    
+    let maxJpClass = 1;
+    if(type==='kelas' && slotConfig?.[id]) {
+        HARI.forEach(h => { for(let j=JP_MAX; j>=1; j--) if(slotConfig[id][h][j] && j > maxJpClass) maxJpClass = j; });
+    } else { maxJpClass = JP_MAX; } 
+
+    return(
+      <div key={id} className="class-wrap" style={{marginBottom:36}}>
+        <div className="print-header">
+            <h1>{akademik.namaSekolah}</h1>
+            <h2>TAHUN AJARAN {akademik.tahunAjaran} | SEMESTER {akademik.semester ? akademik.semester.toUpperCase() : '-'} | {judul.toUpperCase()}</h2>
+        </div>
+        <div className="class-title no-print" style={{background:'linear-gradient(135deg,#0f1f1a,#0f1525)',borderBottom:'2px solid rgba(0,229,160,.3)',borderTopLeftRadius:12,borderTopRightRadius:12,padding:'10px 16px',display:'flex',alignItems:'center',gap:10}}>
+          <span style={{fontFamily:'Exo 2',fontWeight:900,fontSize:14,color:'#fff',textTransform:'uppercase',letterSpacing:1}}>{judul}</span>
+          {type==='kelas'&&kObj&&<span className="no-print" style={{fontSize:11,color:'#555',marginLeft:'auto'}}>{kObj.jamMasuk} WIB · {kObj.durasiJp} mnt/JP</span>}
+        </div>
+        <div style={{overflowX:'auto',border:'1px solid #252535',borderTop:'none',borderBottomLeftRadius:12,borderBottomRightRadius:12,background:'#161622'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',minWidth:780}}>
+            <thead>
+              <tr style={{background:'#0d0d14'}}>
+                <th className="th-day" style={{padding:'8px 6px',width:75,borderRight:'1px solid #252535',borderBottom:'1px solid #252535',fontSize:11,color:'#666',fontWeight:700,textAlign:'center'}}>JP</th>
+                {HARI.map(h=><th key={h} className="th-day" style={{padding:'8px 4px',borderRight:'1px solid #252535',borderBottom:'1px solid #252535',fontSize:12,color:'#888',fontWeight:700,textAlign:'center'}}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({length: maxJpClass}).map((_, i)=>(
+                <tr key={i+1} style={{borderBottom:'1px solid #1e1e2e'}}>
+                  <td className="td-time" style={{padding:'6px 4px',textAlign:'center',background:'#111118',borderRight:'1px solid #252535'}}>
+                    <div style={{fontSize:12,fontWeight:700,color:'#aaa'}}>JP {i+1}</div>
+                    {type==='kelas'&&<div style={{fontSize:9,color:'#555',marginTop:2}}>{calcTime(kObj,i+1)}</div>}
+                  </td>
+                  {HARI.map(hari=>{
+                    if(type==='kelas'){
+                      const off=!slotConfig?.[id]?.[hari]?.[i+1];
+                      const ass=jadwal[id]?.[hari]?.[i+1];
+                      const isLockedCell=!!(lockedSlots?.[id]?.[hari]?.[i+1]);
+                      const cs={borderRight:'1px solid #1e1e2e',padding:8,verticalAlign:'middle',position:'relative'};
+                      
+                      if(off) return<td key={hari} className="td-off" style={{...cs,background:'#0a0a10',textAlign:'center',color:'#333',fontSize:12}}>—</td>;
+                      if(ass?.isUpacara) return<td key={hari} className="td-upacara" style={{...cs,background:'rgba(239,68,68,.08)',textAlign:'center'}}><span style={{fontSize:11,fontWeight:900,color:'#f87171',letterSpacing:1,fontFamily:'Exo 2'}}>UPACARA</span></td>;
+                      if(!ass) return(
+                        <td key={hari} className="td-empty jadwal-cell" style={{...cs,background:'#0f0f16',cursor:'pointer'}} onClick={()=>!lockMode&&openEdit(id,hari,i+1)}>
+                          <div className="ca no-print"><button className="cbtn cbtn-e"><i className="fas fa-plus" style={{fontSize:10}}/></button></div>
+                        </td>
+                      );
+                      return(
+                        <td key={hari} className={`td-mapel jadwal-cell${isLockedCell?' cell-locked':''}`} style={{...cs,background:isLockedCell?'rgba(245,158,11,.06)':'rgba(0,229,160,.03)'}}>
+                          {isLockedCell&&<span className="lock-badge no-print"><i className="fas fa-lock"/></span>}
+                          <span className="mn" style={{display:'block',fontSize:13,fontWeight:700,color:isLockedCell?'#fcd34d':'#00e5a0',fontFamily:'Exo 2',marginBottom:3}}>{mName(ass.mapelId)}</span>
+                          <span className="gn" style={{display:'block',fontSize:10,color:'#777'}}>{gName(ass.guruId)}</span>
+                          <div className="ca no-print">
+                            {lockMode?(
+                              <button className={`cbtn ${isLockedCell?'cbtn-l-on':'cbtn-l'}`} onClick={e=>{e.stopPropagation();setLockedSlots(p=>{let n=JSON.parse(JSON.stringify(p)); if(!n[id]) n[id]={}; if(!n[id][hari]) n[id]={}; n[id][hari][i+1]=!n[id][hari][i+1]; return n;})}}>
+                                <i className={`fas ${isLockedCell?'fa-unlock':'fa-lock'}`}/>
+                              </button>
+                            ):(
+                              <>
+                                <button className="cbtn cbtn-e" onClick={e=>{e.stopPropagation();openEdit(id,hari,i+1);}}><i className="fas fa-pen"/></button>
+                                <button className="cbtn cbtn-d" onClick={e=>{e.stopPropagation();delCell(id,hari,i+1);}}><i className="fas fa-times"/></button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    }else{
+                      let af=null,kf=null;
+                      for(const k of kelas){if(jadwal[k.id]?.[hari]?.[i+1]?.guruId===id){af=jadwal[k.id][hari][i+1];kf=k.id;break;}}
+                      if(!af) return<td key={hari} style={{padding:8,borderRight:'1px solid #1e1e2e',textAlign:'center',fontSize:12,color:'#333',background:'#111118'}}>—</td>;
+                      return(
+                        <td key={hari} className="td-guru-mapel" style={{padding:8,borderRight:'1px solid #1e1e2e',textAlign:'center',verticalAlign:'middle',background:'rgba(0,184,212,.03)'}}>
+                          <span className="mn" style={{display:'block',fontSize:13,fontWeight:700,color:'#00b8d4',fontFamily:'Exo 2',marginBottom:3}}>{mName(af.mapelId)}</span>
+                          <span className="kn" style={{display:'inline-block',fontSize:10,color:'#666',padding:'2px 6px',borderRadius:4,border:'1px solid #252535',background:'#0d0d14'}}>{kName(kf)}</span>
+                        </td>
+                      );
+                    }
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  const selStyle={background:'#161622',border:'1px solid #333',borderRadius:8,padding:'7px 12px',fontSize:12,fontWeight:700,color:'#fff',outline:'none'};
+
+  return(
+    <div className="ain" style={{display:'flex',flexDirection:'column',height:'100%',gap:12}}>
+      <ValidationPanel validationData={validationData} />
+
+      <div className="no-print" style={{display:'flex',flexWrap:'wrap',justifyContent:'space-between',alignItems:'center',gap:10,flexShrink:0}}>
+        <div style={{display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
+          <select value={viewMode} onChange={e=>{setViewMode(e.target.value);setSelId(e.target.value==='guru'?guru[0]?.id:kelas[0]?.id);}} style={selStyle}>
+            <option value="semua_kelas">Semua Kelas</option>
+            <option value="kelas">Pilih Kelas</option>
+            <option value="guru">Jadwal Guru</option>
+          </select>
+          {viewMode==='kelas'&&<select value={selId} onChange={e=>setSelId(e.target.value)} style={selStyle}>{kelas.map(k=><option key={k.id} value={k.id}>{k.nama}</option>)}</select>}
+          {viewMode==='guru'&&<select value={selId} onChange={e=>setSelId(e.target.value)} style={selStyle}>{guru.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}</select>}
+          
+          {viewMode==='semua_kelas'&&<button onClick={()=>setLockMode(!lockMode)} style={{background:lockMode?'rgba(245,158,11,.15)':'#161622',color:lockMode?'#fcd34d':'#aaa',border:`1px solid ${lockMode?'rgba(245,158,11,.4)':'#333'}`,borderRadius:8,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer',marginLeft:8}}><i className={`fas ${lockMode?'fa-lock':'fa-unlock'}`} style={{marginRight:6}}/> Mode Lock Manual</button>}
+        </div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+          <button onClick={()=>{ window.print() }} className="btn-p" style={{padding:'8px 16px',borderRadius:8,fontSize:12}}><i className="fas fa-print" style={{marginRight:6}}/> Cetak PDF</button>
+          <button onClick={doExcel} style={{background:'#161622',color:'#00e5a0',border:'1px solid rgba(0,229,160,.3)',borderRadius:8,padding:'8px 16px',fontSize:12,fontWeight:700,cursor:'pointer'}}><i className="fas fa-file-excel" style={{marginRight:6}}/> Excel (XLSX)</button>
+        </div>
+      </div>
+
+      <div className="hs" style={{flex:1,background:'#0d0d14',borderRadius:12,padding:16,border:'1px solid #252535'}}>
+        <div id="print-area">
+          {viewMode==='semua_kelas'&&kelas.map(k=>renderTable(k.id,'kelas'))}
+          {viewMode==='kelas'&&renderTable(selId,'kelas')}
+          {viewMode==='guru'&&renderTable(selId,'guru')}
+        </div>
+      </div>
+
+      {editCell&&(
+        <div className="modal-bg">
+          <div className="modal-box ain">
+            <h3 style={{fontFamily:'Exo 2',fontWeight:900,fontSize:17,color:'#fff',marginBottom:18}}><i className="fas fa-pen" style={{color:'#00b8d4',marginRight:8}}/>Edit Slot Manual</h3>
+            <div style={{display:'flex',gap:6,marginBottom:16}}>
+              <span style={{padding:'3px 10px',borderRadius:6,border:'1px solid #333',background:'#0d0d14',color:'#aaa',fontSize:11}}>{editCell.hari} - JP {editCell.jp}</span>
+              <span style={{padding:'3px 10px',borderRadius:6,fontSize:11,fontWeight:700}} className={`bg-gradient-to-r border ${kColor(kelas,editCell.kId)}`}>{kName(editCell.kId)}</span>
+            </div>
+            
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:2,display:'block',marginBottom:5}}>MATA PELAJARAN</label>
+              <select value={editData.mapelId} onChange={e=>handleMapelChange(e.target.value)} style={{background:'#0d0d14',border:'1px solid #333',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#fff',outline:'none',width:'100%'}}>
+                <option value="">— Kosongkan Slot —</option>
+                {assignments.filter(a=>a.kelasId===editCell.kId).map(ass => <option key={ass.id} value={ass.mapelId}>{mName(ass.mapelId)}</option>)}
+              </select>
+            </div>
+            
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:2,display:'block',marginBottom:5}}>GURU PENGAJAR</label>
+              <select value={editData.guruId} onChange={e=>setEditData({...editData, guruId:e.target.value})} style={{background:'#0d0d14',border:'1px solid #333',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#fff',outline:'none',width:'100%'}} disabled={!editData.mapelId}>
+                <option value="">— Tidak ada guru —</option>
+                {guru.map(x=><option key={x.id} value={x.id}>{x.nama}</option>)}
+              </select>
+            </div>
+            
+            <div style={{display:'flex',gap:10,marginTop:20}}>
+              <button onClick={()=>setEditCell(null)} style={{flex:1,padding:'10px',borderRadius:8,border:'1px solid #333',background:'#0d0d14',color:'#888',cursor:'pointer',fontSize:12,fontWeight:700}}>Batal</button>
+              <button onClick={saveEdit} className="btn-p" style={{flex:1,padding:'10px',borderRadius:8,fontSize:12}}>Simpan</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+// MAIN APP
+const App = ()=>{
+  const [tab,setTab]=useState('dashboard'); const [sidebar,setSidebar]=useState(false);
+
+  const [akademik,setAkademik]=useState(()=>LS.get('akademik',{namaSekolah:'SD Negeri 1 Nusantara',tahunAjaran:'',semester:''}));
+  const [kelas,setKelas]=useState(()=>LS.get('kelas',DEFAULT_KELAS));
+  const [guru,setGuru]=useState(()=>LS.get('guru',DEFAULT_GURU));
+  const [mapel,setMapel]=useState(()=>LS.get('mapel',DEFAULT_MAPEL));
+  const [assignments,setAssignments]=useState(()=>LS.get('assignments',[]));
+  const [guruOffDays,setGuruOffDays]=useState(()=>LS.get('guruOffDays',{}));
+  const [slotConfig,setSlotConfig]=useState(()=>LS.get('slotConfig',null));
+  const [jadwal,setJadwal]=useState(()=>LS.get('jadwal',{}));
+  const [isGenerated,setIsGenerated]=useState(()=>LS.get('isGenerated',false));
+  const [lockedSlots,setLockedSlots]=useState(()=>LS.get('lockedSlots',{}));
+  
+  // PENAMBAHAN KEMBALI STATE HISTORY
+  const [history,setHistory]=useState(()=>LS.get('history',[]));
+
+  useEffect(()=>{LS.set('akademik',akademik);},[akademik]);
+  useEffect(()=>{LS.set('kelas',kelas);},[kelas]);
+  useEffect(()=>{LS.set('guru',guru);},[guru]);
+  useEffect(()=>{LS.set('mapel',mapel);},[mapel]);
+  useEffect(()=>{LS.set('assignments',assignments);},[assignments]);
+  useEffect(()=>{LS.set('guruOffDays',guruOffDays);},[guruOffDays]);
+  useEffect(()=>{LS.set('slotConfig',slotConfig);},[slotConfig]);
+  useEffect(()=>{LS.set('jadwal',jadwal);},[jadwal]);
+  useEffect(()=>{LS.set('isGenerated',isGenerated);},[isGenerated]);
+  useEffect(()=>{LS.set('lockedSlots',lockedSlots);},[lockedSlots]);
+  useEffect(()=>{LS.set('history',history);},[history]); // SIMPAN HISTORY
+
+  useEffect(()=>{
+    setSlotConfig(prev=>{
+      let cfg=prev?{...prev}:{};let changed=false;
+      Object.keys(cfg).forEach(kId=>{if(!kelas.find(k=>k.id===kId)){delete cfg[kId];changed=true;}});
+      kelas.forEach(k=>{if(!cfg[k.id]){cfg[k.id]={};HARI.forEach(h=>{cfg[k.id][h]={};for(let j=1;j<=JP_MAX;j++)cfg[k.id][h][j]=h!=='Minggu';});changed=true;}});
+      return changed||!prev?{...cfg}:prev;
+    });
+  },[kelas]);
+
+  const MENUS=[
+    {s:'UTAMA',items:[{id:'dashboard',i:'fa-chart-pie',l:'Dashboard'},{id:'akademik',i:'fa-university',l:'Identitas Akademik'},{id:'master',i:'fa-database',l:'Data Master'},{id:'tugas',i:'fa-tasks',l:'Tugas Mengajar'}]},
+    {s:'KONFIGURASI',items:[{id:'slot',i:'fa-clock',l:'Pengaturan Jam'},{id:'ketersediaan',i:'fa-toggle-on',l:'Ketersediaan Jam'}]},
+    {s:'EKSEKUSI',items:[{id:'generate',i:'fa-robot',l:'Auto Generate AI'},{id:'grid',i:'fa-calendar-alt',l:'Hasil & Cetak'}]},
+  ];
+
+  const sBase={background:'none',border:'1px solid transparent',borderRadius:8,padding:'9px 12px',fontSize:12,fontWeight:600,color:'#555',cursor:'pointer',display:'flex',alignItems:'center',width:'100%',transition:'all .15s'};
+  const sActive={...sBase,background:'linear-gradient(135deg,rgba(0,229,160,.1),rgba(0,184,212,.06))',border:'1px solid rgba(0,229,160,.3)',color:'#00e5a0'};
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden',background:'#0d0d14'}}>
+      <div className="no-print" style={{height:40,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 16px',background:'#0a0a12',borderBottom:'1px solid #252535',flexShrink:0}}>
+        <span style={{fontSize:10,color:'#00e5a0',fontFamily:'Exo 2',fontWeight:800}}>{akademik.namaSekolah.toUpperCase()}</span>
+      </div>
+      <div style={{display:'flex',flex:1,overflow:'hidden',position:'relative'}}>
+        {sidebar&&<div className="no-print" style={{position:'fixed',inset:0,background:'rgba(0,0,0,.7)',zIndex:20}} onClick={()=>setSidebar(false)}/>}
+        <div className="no-print" style={{position:'fixed',top:0,bottom:0,left:0,width:230,zIndex:30,background:'#0a0a12',borderRight:'1px solid #252535',display:'flex',flexDirection:'column',transform:sidebar?'translateX(0)':'translateX(-100%)',transition:'transform .28s'}}>
+          <style>{`@media(min-width:768px){.sidebar-inner{transform:translateX(0)!important;}}`}</style>
+          <div className="sidebar-inner" style={{position:'fixed',top:0,bottom:0,left:0,width:230,background:'#0a0a12',borderRight:'1px solid #252535',display:'flex',flexDirection:'column',transition:'transform .28s',transform:sidebar?'translateX(0)':'translateX(-100%)'}}>
+            <div style={{padding:'14px 16px',borderBottom:'1px solid #252535',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <Logo/>
+              <button onClick={()=>setSidebar(false)} style={{background:'none',border:'none',color:'#555',cursor:'pointer',fontSize:16}} className="md-hide">✕</button>
+            </div>
+            <nav className="hs" style={{flex:1,padding:'12px 10px'}}>
+              {MENUS.map(sec=>(
+                <div key={sec.s} style={{marginBottom:16}}>
+                  <div style={{fontSize:9,fontWeight:800,color:'#333',letterSpacing:3,padding:'0 10px',marginBottom:8}}>{sec.s}</div>
+                  {sec.items.map(m=>( <button key={m.id} onClick={()=>{setTab(m.id);setSidebar(false);}} style={tab===m.id?sActive:sBase}><i className={`fas ${m.i}`} style={{width:20,marginRight:8,fontSize:13,color:tab===m.id?'#00e5a0':'inherit'}}/>{m.l}</button> ))}
+                </div>
+              ))}
+            </nav>
+          </div>
+        </div>
+        <div className="no-print" style={{width:230,flexShrink:0,display:'none'}} id="sidebar-spacer"/><style>{`@media(min-width:768px){#sidebar-spacer{display:block!important;}}`}</style>
+        <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'#0d0d14'}}>
+          <div className="no-print" style={{display:'none',alignItems:'center',justifyContent:'space-between',padding:'10px 14px',background:'#0a0a12',borderBottom:'1px solid #252535'}} id="mobile-header">
+            <Logo small/><button onClick={()=>setSidebar(true)} style={{background:'none',border:'none',color:'#aaa',cursor:'pointer',fontSize:18}}>☰</button>
+          </div><style>{`@media(max-width:767px){#mobile-header{display:flex!important;}}`}</style>
+          <div className="hs" style={{flex:1,padding:'20px 20px 60px'}}>
+            {tab==='dashboard'&&<Dashboard akademik={akademik} guru={guru} kelas={kelas} mapel={mapel} assignments={assignments} isGenerated={isGenerated} setTab={setTab}/>}
+            {tab==='akademik'&&<PengaturanAkademik akademik={akademik} setAkademik={setAkademik}/>}
+            {tab==='master'&&<MasterData kelas={kelas} setKelas={setKelas} guru={guru} setGuru={setGuru} mapel={mapel} setMapel={setMapel} assignments={assignments} setAssignments={setAssignments} guruOffDays={guruOffDays} setGuruOffDays={setGuruOffDays} jadwal={jadwal} />}
+            {tab==='tugas'&&<TugasMengajar kelas={kelas} guru={guru} mapel={mapel} assignments={assignments} setAssignments={setAssignments}/>}
+            {tab==='slot'&&<PengaturanJam kelas={kelas} setKelas={setKelas}/>}
+            {tab==='ketersediaan'&&<Ketersediaan kelas={kelas} slotConfig={slotConfig} setSlotConfig={setSlotConfig}/>}
+            
+            {/* TERUSKAN VARIABEL HISTORY KE DALAM AUTOGENERATE */}
+            {tab==='generate'&&<AutoGenerate akademik={akademik} kelas={kelas} guru={guru} mapel={mapel} assignments={assignments} slotConfig={slotConfig} guruOffDays={guruOffDays} setJadwal={setJadwal} setIsGenerated={setIsGenerated} setTab={setTab} lockedSlots={lockedSlots} jadwal={jadwal} history={history} setHistory={setHistory}/>}
+            
+            {tab==='grid'&&<GridJadwal akademik={akademik} kelas={kelas} guru={guru} mapel={mapel} jadwal={jadwal} assignments={assignments} slotConfig={slotConfig} isGenerated={isGenerated} setJadwal={setJadwal} lockedSlots={lockedSlots} setLockedSlots={setLockedSlots}/>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

@@ -1,14 +1,14 @@
 {
   "name": "Sistem Jadwal MI Islamiyah",
   "short_name": "Jadwal MII",
-  "description": "Aplikasi Jadwal Pelajaran MI Islamiyah Purwawinangun",
-  "start_url": "index.html",
+  "description": "Aplikasi Jadwal Pelajaran MI Islamiyah",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#047857",
   "theme_color": "#047857",
   "icons": [
     {
-      "src": "./icon.png"
+      "src": "./icon.png", 
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

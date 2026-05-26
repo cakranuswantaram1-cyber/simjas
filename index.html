@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>SIMJAS PRO v3.5 - Sistem Manajement</title>
+<title>SIMJAS PRO v3.7 - Sistem Manajement</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <script src="https://cdn.tailwindcss.com"></script>
@@ -77,7 +77,7 @@ body{font-family:'Noto Sans',sans-serif;background:var(--bg);color:#e2e2f0;}
 <div id="root">
   <div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:14px">
     <div style="width:48px;height:48px;background:linear-gradient(135deg,#00e5a0,#00b8d4);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);animation:s 1s linear infinite"></div>
-    <p style="color:#00e5a0;font-family:'Exo 2',sans-serif;font-weight:700;letter-spacing:3px;font-size:13px">MEMUAT SIMJAS PRO v3.5...</p>
+    <p style="color:#00e5a0;font-family:'Exo 2',sans-serif;font-weight:700;letter-spacing:3px;font-size:13px">MEMUAT SIMJAS PRO v3.7...</p>
     <style>@keyframes s{from{transform:rotate(0)}to{transform:rotate(360deg)}}</style>
   </div>
 </div>
@@ -114,27 +114,26 @@ const LS = {
   set:(k,v)=>{try{localStorage.setItem('sj3_'+k,JSON.stringify(v));}catch{}},
 };
 
-// ATURAN JP KETAT V5
+// ATURAN JP KETAT V7 (Prioritas 3 JP)
 const makeChunks = (jp) => {
   if (jp <= 1) return []; 
   if (jp === 2) return [2];
   if (jp === 3) return [3]; 
-  if (jp === 4) return [4];
+  if (jp === 4) return [2, 2];
   if (jp === 5) return [3, 2]; 
   if (jp === 6) return [3, 3];
-  if (jp === 7) return [4, 3];
-  if (jp === 8) return [4, 4];
+  if (jp === 7) return [3, 2, 2];
+  if (jp === 8) return [3, 3, 2];
   if (jp === 9) return [3, 3, 3];
-  if (jp === 10) return [4, 3, 3];
+  if (jp === 10) return [3, 3, 2, 2];
   
   const ch = [];
   let r = jp;
   while (r > 0) {
-      if (r >= 4) { ch.push(4); r -= 4; }
-      else if (r === 3) { ch.push(3); r -= 3; }
+      if (r >= 3) { ch.push(3); r -= 3; }
       else if (r === 2) { ch.push(2); r -= 2; }
       else if (r === 1) {
-          if (ch.length > 0 && ch[ch.length - 1] < 4) { ch[ch.length - 1] += 1; r = 0; }
+          if (ch.length > 0 && ch[ch.length - 1] < 3) { ch[ch.length - 1] += 1; r = 0; }
           else { ch.push(2); r = 0; } 
       }
   }
@@ -166,7 +165,7 @@ const Logo = memo(({small})=>(
         <span style={{color:'#fff'}}>JAS</span>
         <span style={{color:'#00b8d4'}}>.</span>
       </div>
-      <span style={{fontSize:7,background:'linear-gradient(135deg,#00e5a0,#00b8d4)',color:'#000',padding:'1px 5px',borderRadius:4,fontWeight:800,letterSpacing:2,fontFamily:'Exo 2'}}>PRO v3.5</span>
+      <span style={{fontSize:7,background:'linear-gradient(135deg,#00e5a0,#00b8d4)',color:'#000',padding:'1px 5px',borderRadius:4,fontWeight:800,letterSpacing:2,fontFamily:'Exo 2'}}>PRO v3.7</span>
     </div>
   </div>
 ));
@@ -652,7 +651,7 @@ const TugasMengajar = memo(({kelas,guru,mapel,assignments,setAssignments})=>{
               </div>
             </div>
             <div style={{display:'flex',gap:10,marginBottom:16}}>
-              {[{v:fBlok,s:setFBlok,l:'Satu Blok (Berurutan)',d:'Usahakan tidak dipecah antar hari'},{v:fPagi,s:setFPagi,l:'Khusus Pagi (JP 1–4)',d:'Wajib diutamakan awal jam (cth: Olahraga)'}].map(o=>(
+              {[{v:fBlok,s:setFBlok,l:'Satu Blok (Berurutan)',d:'Dilarang keras sistem memecah JP ini'},{v:fPagi,s:setFPagi,l:'Khusus Pagi (JP 1–4)',d:'Wajib diutamakan awal jam (cth: Olahraga)'}].map(o=>(
                 <label key={o.l} style={{flex:1,display:'flex',alignItems:'center',gap:10,cursor:'pointer',background:'#0d0d14',border:'1px solid #252535',borderRadius:8,padding:'10px 12px'}}>
                   <input type="checkbox" checked={o.v} onChange={e=>o.s(e.target.checked)} style={{width:14,height:14,accentColor:'#00e5a0'}}/>
                   <div><span style={{fontSize:12,color:'#fff',fontWeight:700,display:'block'}}>{o.l}</span><span style={{fontSize:10,color:'#555'}}>{o.d}</span></div>
@@ -853,12 +852,12 @@ const Ketersediaan = memo(({kelas,slotConfig,setSlotConfig})=>{
   );
 });
 
-// ENGINE GENERATE BARU V5 (Strict Pagi & Partial Generation)
+// ENGINE GENERATE BARU V7 (Absolute Constraints & Smart Block Preservation)
 const AutoGenerate = memo(({akademik,kelas,guru,mapel,assignments,slotConfig,guruOffDays,setJadwal,setIsGenerated,setTab,lockedSlots,jadwal,history,setHistory})=>{
   const [log,setLog]=useState(''); const [status,setStatus]=useState('idle'); const [progress,setProgress]=useState(0);
   const [genMode, setGenMode] = useState('semua');
-  const [genTarget, setGenTarget] = useState([]); // SEKARANG ARRAY UNTUK MULTI SELECT
-  const [genGuruKelas, setGenGuruKelas] = useState([]); // Filter kelas untuk mode guru
+  const [genTarget, setGenTarget] = useState([]); 
+  const [genGuruKelas, setGenGuruKelas] = useState([]);
   
   const mName=id=>mapel.find(m=>m.id===id)?.nama||id; const kName=id=>kelas.find(k=>k.id===id)?.nama||id;
 
@@ -866,236 +865,254 @@ const AutoGenerate = memo(({akademik,kelas,guru,mapel,assignments,slotConfig,gur
     if(!akademik.tahunAjaran) { alert("Harap lengkapi TAHUN AJARAN!"); setTab('akademik'); return; }
     if(genMode !== 'semua' && genTarget.length === 0) { alert("Pilih minimal satu target generate (centang kotak yang tersedia)!"); return; }
     
-    setStatus('processing'); setLog('Inisialisasi Algoritma V5 (Mode Strict Pagi & Smart Targeting)...'); setProgress(5);
-    await new Promise(r=>setTimeout(r,100)); 
+    setStatus('processing'); setLog('Inisialisasi Algoritma V7 (Hard Lock Upacara & Pengecekan Blok Utuh)...'); setProgress(5);
+    await new Promise(r=>setTimeout(r,50)); 
     
-    // Gunakan jadwal sebelumnya jika mode parsial
-    let nj = (genMode === 'semua') ? {} : JSON.parse(JSON.stringify(jadwal || {})); 
-    let gt={}, errors=[];
+    let nj_base = (genMode === 'semua') ? {} : JSON.parse(JSON.stringify(jadwal || {})); 
+    let gt_base = {};
 
-    // 1. Setup Grid Dasar & Kunci Jadwal yg Tidak Dipilih
+    // 1. Setup Grid Dasar & Kunci Jadwal
     kelas.forEach(k=>{
-      if(genMode === 'semua' || !nj[k.id]) nj[k.id] = {};
+      if(genMode === 'semua' || !nj_base[k.id]) nj_base[k.id] = {};
       HARI.forEach(h=>{
-        if(genMode === 'semua' || !nj[k.id][h]) nj[k.id][h] = {};
-        if(!gt[h]) gt[h]={};
+        if(genMode === 'semua' || !nj_base[k.id][h]) nj_base[k.id][h] = {};
+        if(!gt_base[h]) gt_base[h]={};
+        
         for(let jp=1;jp<=JP_MAX;jp++){
-          // Kosongkan HANYA untuk target yang dipilih
+          let isLocked = lockedSlots?.[k.id]?.[h]?.[jp];
           let shouldClear = false;
+          
           if (genMode === 'semua') shouldClear = true;
           if (genMode === 'kelas' && genTarget.includes(k.id)) shouldClear = true;
-          if (genMode === 'guru' && genTarget.includes(nj[k.id]?.[h]?.[jp]?.guruId)) shouldClear = true;
+          if (genMode === 'guru' && genTarget.includes(nj_base[k.id]?.[h]?.[jp]?.guruId)) shouldClear = true;
 
-          if (shouldClear) nj[k.id][h][jp] = null;
-          if (!gt[h][jp]) gt[h][jp]={};
-          
-          // Re-populate Guru Tracking untuk jadwal yg sudah ada (tdk dihapus)
-          const existCell = nj[k.id]?.[h]?.[jp];
-          if(existCell && existCell.guruId) gt[h][jp][existCell.guruId] = true;
-        }
-      });
-      // Setup Upacara
-      if(k.jamMasuk<='08:00'&&slotConfig?.[k.id]?.['Senin']?.[1] && (genMode === 'semua' || (genMode === 'kelas' && genTarget.includes(k.id)))){
-        nj[k.id]['Senin'][1]={isUpacara:true,mapelId:'UPC'};
-      }
-    });
+          // Jangan hapus yang dilock manual
+          if (isLocked) shouldClear = false;
 
-    // 2. Proteksi Manual Slots (Locked) - Tetap pertahankan yg dilock
-    kelas.forEach(k=>{
-      HARI.forEach(h=>{
-        for(let jp=1;jp<=JP_MAX;jp++){
-          if(lockedSlots?.[k.id]?.[h]?.[jp] && jadwal?.[k.id]?.[h]?.[jp]){
-            const entry=jadwal[k.id][h][jp];
-            if(!entry.isUpacara){
-              nj[k.id][h][jp]={...entry};
-              if(entry.guruId) gt[h][jp][entry.guruId]=true;
-            }
+          // FORCE UPACARA (Kunci Paten Global Senin JP 1, tak terhapus apa pun)
+          if (h === 'Senin' && jp === 1 && slotConfig?.[k.id]?.['Senin']?.[1]) {
+             nj_base[k.id]['Senin'][1] = {isUpacara:true, mapelId:'UPC'};
+             shouldClear = false;
           }
+
+          if (shouldClear) nj_base[k.id][h][jp] = null;
+          if (!gt_base[h][jp]) gt_base[h][jp]={};
+          
+          const existCell = nj_base[k.id]?.[h]?.[jp];
+          if(existCell && existCell.guruId) gt_base[h][jp][existCell.guruId] = true;
         }
       });
     });
 
-    // 3. Persiapan Chunks Cerdas
-    setLog('Menyusun prioritas Mapel Pagi (JP 1-4) & Guru Eksternal...'); setProgress(20);
+    setLog('Memproses Pengelompokan (Chunks) & Aturan Satu Blok...'); setProgress(20);
     await new Promise(r=>setTimeout(r,50));
     
     let chunksToPlace = [];
     let guruClasses = {};
-    assignments.forEach(a => { if(!guruClasses[a.guruId]) guruClasses[a.guruId] = new Set(); guruClasses[a.guruId].add(a.kelasId); });
+    let assMap = {};
+    assignments.forEach(a => { 
+        if(!guruClasses[a.guruId]) guruClasses[a.guruId] = new Set(); 
+        guruClasses[a.guruId].add(a.kelasId);
+        assMap[a.id] = a.jp;
+    });
     
-    // Filter Target Assignments (Hanya ambil yang perlu digenerate)
     let targetAssignments = assignments.filter(ass => {
         if(genMode === 'semua') return true;
         if(genMode === 'kelas') return genTarget.includes(ass.kelasId);
-        if(genMode === 'guru') {
-            const guruMatch = genTarget.includes(ass.guruId);
-            const kelasMatch = genGuruKelas.length === 0 || genGuruKelas.includes(ass.kelasId);
-            return guruMatch && kelasMatch;
-        }
+        if(genMode === 'guru') return genTarget.includes(ass.guruId) && (genGuruKelas.length === 0 || genGuruKelas.includes(ass.kelasId));
         return false;
     });
 
     targetAssignments.forEach(ass => {
         let lockedJp = 0;
-        // Hitung JP yg sudah terpasang (karena dilock)
-        HARI.forEach(h => { for(let j=1; j<=JP_MAX; j++) if(nj[ass.kelasId]?.[h]?.[j]?.mapelId === ass.mapelId) lockedJp++; });
+        HARI.forEach(h => { for(let j=1; j<=JP_MAX; j++) if(nj_base[ass.kelasId]?.[h]?.[j]?.mapelId === ass.mapelId) lockedJp++; });
         
         let rem = ass.jp - lockedJp;
-        if(rem >= 2) {
-            let isUmum = guruClasses[ass.guruId].size > 1; // Guru bidang studi (Prioritas di atas wali kelas)
-            let cLengths = makeChunks(rem); // Mencegah 1 JP
+        if(rem > 0) {
+            let isUmum = guruClasses[ass.guruId].size > 1; 
+            // FIX: Jika isBlock dicentang, WAJIB biarkan utuh [rem], jangan pernah dipecah!
+            let cLengths = ass.isBlock ? [rem] : makeChunks(rem);
             cLengths.forEach(len => {
                 chunksToPlace.push({ id: ass.id, kId: ass.kelasId, mapelId: ass.mapelId, guruId: ass.guruId, len: len, isUmum: isUmum, isPagi: ass.isPagi, isBlock: ass.isBlock });
             });
-        } else if (rem === 1) {
-            errors.push(`Aturan Dilanggar: Mapel ${mName(ass.mapelId)} di ${kName(ass.kelasId)} tersisa 1 JP aktif. Coba ubah Total JP di Tugas Mengajar.`);
         }
     });
 
-    // URUTAN PRIORITAS KETAT V5
+    // PENGURUTAN BOBOT PRIORITAS
     chunksToPlace.sort((a,b) => {
-        if(a.isPagi !== b.isPagi) return a.isPagi ? -1 : 1; // Pagi (Olahraga dll) Nomor 1
-        if(a.isUmum !== b.isUmum) return a.isUmum ? -1 : 1; // Guru Keliling (Agama, B.Inggris) Nomor 2
-        if(a.len === 3 && b.len !== 3) return -1; // Blok 3 JP utuh prioritas
-        if(b.len === 3 && a.len !== 3) return 1;
-        return b.len - a.len; // Blok besar dulu
+        if(a.isPagi !== b.isPagi) return a.isPagi ? -1 : 1; 
+        let totalA = assMap[a.id] || 0;
+        let totalB = assMap[b.id] || 0;
+        if(totalA !== totalB) return totalB - totalA; 
+        if(a.isUmum !== b.isUmum) return a.isUmum ? -1 : 1; 
+        return b.len - a.len;
     });
 
-    // 4. Constraint Satisfaction Placement
-    const isRangeValid = (kId, h, startJp, size, gId, isPagi) => {
-        // Aturan ketat PAGI: Jika isPagi true, max penempatan harus beres sblm JP 5.
-        // Artinya: startJp + size - 1 <= 4.  (Cth: size 3, s max = 2. size 4, s max = 1).
-        if (isPagi && (startJp + size - 1 > 4)) return false;
+    setLog('Mengeksekusi Backtracking Loop & Simulasi Resolusi Bentrok...'); setProgress(40);
+    await new Promise(r=>setTimeout(r,50));
 
-        for(let i=0; i<size; i++) {
-            if(!slotConfig?.[kId]?.[h]?.[startJp+i]) return false;
-            if(nj[kId][h][startJp+i] !== null) return false;
-            if(gt[h][startJp+i][gId]) return false;
-        }
-        return true;
-    };
-
-    setLog('Menempatkan Slot dengan Engine V5...'); setProgress(40);
+    let bestNj = null;
+    let minErrors = Infinity;
+    let bestErrors = [];
+    const maxIterations = 50; 
     
-    for(let i=0; i<chunksToPlace.length; i++) {
-        let chunk = chunksToPlace[i];
-        let bestH = null, bestS = null, bestScore = Infinity;
-        let days = [...HARI].sort(()=>Math.random()-0.5); 
+    for (let iter = 0; iter < maxIterations; iter++) {
+        let nj_sim = JSON.parse(JSON.stringify(nj_base));
+        let gt_sim = JSON.parse(JSON.stringify(gt_base));
+        let errors_sim = [];
         
-        for(let h of days) {
-            if (guruOffDays[chunk.guruId]?.[h]) continue;
-            let hasSameMapel = false;
-            for(let j=1; j<=JP_MAX; j++) if (nj[chunk.kId][h][j] && nj[chunk.kId][h][j].mapelId === chunk.mapelId) hasSameMapel = true;
-
-            for(let s=1; s<=JP_MAX - chunk.len + 1; s++) {
-                if (isRangeValid(chunk.kId, h, s, chunk.len, chunk.guruId, chunk.isPagi)) {
-                    let score = 0; 
-                    
-                    if (hasSameMapel) score += 5000; // Jangan 2x sehari jika tidak terpaksa
-                    if(!chunk.isPagi && !chunk.isUmum) score += (s * 50); // Top-down wali kelas
-                    
-                    let prevEmpty = (s > 1) && slotConfig?.[chunk.kId]?.[h]?.[s-1] && !nj[chunk.kId][h][s-1];
-                    let prevPrevEmpty = (s > 2) && slotConfig?.[chunk.kId]?.[h]?.[s-2] && !nj[chunk.kId][h][s-2];
-                    if (prevEmpty && !prevPrevEmpty) score += 2000;
-
-                    let nextEmpty = (s + chunk.len <= JP_MAX) && slotConfig?.[chunk.kId]?.[h]?.[s+chunk.len] && !nj[chunk.kId][h][s+chunk.len];
-                    let nextNextEmpty = (s + chunk.len + 1 <= JP_MAX) && slotConfig?.[chunk.kId]?.[h]?.[s+chunk.len+1] && !nj[chunk.kId][h][s+chunk.len+1];
-                    if (nextEmpty && !nextNextEmpty) score += 2000;
-
-                    if (score < bestScore) { bestScore = score; bestH = h; bestS = s; }
+        let iterChunks = [...chunksToPlace];
+        if (iter > 0) {
+            // Shuffle
+            for (let i = iterChunks.length - 1; i > 0; i--) {
+                let j = Math.floor(Math.random() * (i + 1));
+                if (iterChunks[i].isPagi === iterChunks[j].isPagi && iterChunks[i].len === iterChunks[j].len) {
+                    [iterChunks[i], iterChunks[j]] = [iterChunks[j], iterChunks[i]];
                 }
             }
         }
 
-        if (bestH) {
-            for(let c=0; c<chunk.len; c++) {
-                nj[chunk.kId][bestH][bestS+c] = {id: chunk.id, mapelId: chunk.mapelId, guruId: chunk.guruId};
-                gt[bestH][bestS+c][chunk.guruId] = true;
+        for (let i = 0; i < iterChunks.length; i++) {
+            let chunk = iterChunks[i];
+            let bestH = null, bestS = null, bestScore = Infinity;
+            let days = [...HARI].sort(() => Math.random() - 0.5); 
+            
+            for (let h of days) {
+                if (guruOffDays[chunk.guruId]?.[h]) continue;
+                let hasSameMapel = false;
+                for (let j=1; j<=JP_MAX; j++) if (nj_sim[chunk.kId][h][j] && nj_sim[chunk.kId][h][j].mapelId === chunk.mapelId) hasSameMapel = true;
+
+                let maxPagi = (h === 'Senin') ? 5 : 4; 
+
+                for (let s=1; s<=JP_MAX - chunk.len + 1; s++) {
+                    if (chunk.isPagi && (s + chunk.len - 1 > maxPagi)) continue;
+                    
+                    let valid = true;
+                    for (let c=0; c<chunk.len; c++) {
+                        if (!slotConfig?.[chunk.kId]?.[h]?.[s+c]) { valid = false; break; }
+                        if (nj_sim[chunk.kId][h][s+c] !== null) { valid = false; break; }
+                        if (gt_sim[h][s+c][chunk.guruId]) { valid = false; break; }
+                    }
+                    
+                    if (valid) {
+                        let score = 0;
+                        if (hasSameMapel) score += 5000; 
+                        if (!chunk.isPagi && !chunk.isUmum) score += (s * 10);
+                        
+                        let prevEmpty = (s > 1) && slotConfig?.[chunk.kId]?.[h]?.[s-1] && !nj_sim[chunk.kId][h][s-1];
+                        let prevPrevEmpty = (s > 2) && slotConfig?.[chunk.kId]?.[h]?.[s-2] && !nj_sim[chunk.kId][h][s-2];
+                        if (prevEmpty && !prevPrevEmpty) score += 10000;
+
+                        let nextEmpty = (s + chunk.len <= JP_MAX) && slotConfig?.[chunk.kId]?.[h]?.[s+chunk.len] && !nj_sim[chunk.kId][h][s+chunk.len];
+                        let nextNextEmpty = (s + chunk.len + 1 <= JP_MAX) && slotConfig?.[chunk.kId]?.[h]?.[s+chunk.len+1] && !nj_sim[chunk.kId][h][s+chunk.len+1];
+                        if (nextEmpty && !nextNextEmpty) score += 10000;
+
+                        if (score < bestScore) { bestScore = score; bestH = h; bestS = s; }
+                    }
+                }
             }
-        } else {
-            errors.push(`Bentrok Data: Blok ${chunk.len} JP ${mName(chunk.mapelId)} di ${kName(chunk.kId)} gagal ditempatkan. (Dibutuhkan Swap Manual)`);
+
+            if (bestH) {
+                for(let c=0; c<chunk.len; c++) {
+                    nj_sim[chunk.kId][bestH][bestS+c] = {id: chunk.id, mapelId: chunk.mapelId, guruId: chunk.guruId};
+                    gt_sim[bestH][bestS+c][chunk.guruId] = true;
+                }
+            } else {
+                errors_sim.push(`Bentrok Data: Blok utuh ${chunk.len} JP ${mName(chunk.mapelId)} di ${kName(chunk.kId)} gagal ditempatkan.`);
+            }
         }
         
-        if(i%10===0) { setProgress(40 + Math.floor((i/chunksToPlace.length)*40)); await new Promise(r=>setTimeout(r,5)); }
+        if (errors_sim.length < minErrors) {
+            minErrors = errors_sim.length;
+            bestErrors = errors_sim;
+            bestNj = nj_sim;
+            if (minErrors === 0) break; 
+        }
+        
+        if (iter % 10 === 0) {
+            setProgress(40 + Math.floor((iter/maxIterations)*50));
+            await new Promise(r=>setTimeout(r,5));
+        }
     }
 
     setLog('Finalisasi Validasi Integritas...'); setProgress(95);
-    await new Promise(r=>setTimeout(r,200));
+    await new Promise(r=>setTimeout(r,150));
 
-    setProgress(100); setJadwal(nj); setIsGenerated(true);
+    setProgress(100); setJadwal(bestNj); setIsGenerated(true);
     
     const historyEntry = {
         id: 'H'+Date.now(),
         name: `Jadwal AI (${genMode}) - ${new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})}`,
         time: new Date().toLocaleTimeString('id-ID'),
-        data: nj
+        data: bestNj
     };
     setHistory(prev => [historyEntry, ...prev].slice(0, 5));
 
     setStatus('done');
-    setLog(errors.length>0 ? '⚠️ Generate Selesai dengan sedikit Kendala/Bentrok:\n\n- '+errors.join('\n- ') : '✅ Sempurna! Seluruh jadwal berhasil disusun berdasarkan prioritas V5 tanpa sisa slot mati (1 JP).');
+    setLog(bestErrors.length>0 ? '⚠️ Generate Selesai (dengan sedikit Kendala/Bentrok). Hasil terbaik:\n\n- '+bestErrors.join('\n- ') : '✅ Sempurna! Seluruh jadwal berhasil disusun (aturan blok dipatuhi).');
   };
 
   const inpSel={background:'#0d0d14',border:'1px solid #333',borderRadius:8,padding:'10px 14px',fontSize:13,color:'#fff',outline:'none',width:'100%',fontFamily:'Exo 2',marginBottom:16};
 
   return(
-    <div className="ain" style={{maxWidth:600,margin:'32px auto',textAlign:'center',background:'#161622',border:'1px solid #252535',borderRadius:24,padding:36}}>
+    <div className="ain" style={{maxWidth:650,margin:'32px auto',textAlign:'center',background:'#161622',border:'1px solid #252535',borderRadius:24,padding:36}}>
       <div className="logo-hex" style={{width:60,height:60,margin:'0 auto 20px',boxShadow:'0 0 36px rgba(0,229,160,.3)'}}><i className="fas fa-robot" style={{color:'#000',fontSize:24}}/></div>
-      <h2 style={{fontFamily:'Exo 2',fontWeight:900,fontSize:22,color:'#fff',marginBottom:8}}>AI SCHEDULER V5</h2>
-      <p style={{fontSize:12,color:'#555',marginBottom:20,lineHeight:1.7}}>Prioritas absolut Olahraga (JP 1-4), dilarang pecahan 1 JP, utamakan guru bidang studi. Mendukung perbaikan jadwal spesifik (per kelas/guru).</p>
+      <h2 style={{fontFamily:'Exo 2',fontWeight:900,fontSize:22,color:'#fff',marginBottom:8}}>AI SCHEDULER V7</h2>
+      <p style={{fontSize:12,color:'#555',marginBottom:20,lineHeight:1.7}}>Mengunci Upacara Senin secara absolut, menjamin keutuhan JP untuk setingan "Satu Blok", dan perlindungan sinkronisasi antara Jadwal Kelas dan Guru.</p>
 
       {status!=='processing' && (
           <div style={{textAlign:'left'}}>
               <label style={{fontSize:10,color:'#00e5a0',fontWeight:700,letterSpacing:2,display:'block',marginBottom:6}}>TARGET GENERATE (Mendukung Multi-Pilihan)</label>
               <div style={{display:'flex',gap:10, alignItems:'flex-start', flexWrap:'wrap'}}>
-                <select value={genMode} onChange={e=>{setGenMode(e.target.value); setGenTarget([]);}} style={{...inpSel, flex:1, minWidth:200, marginBottom:0}}>
-                    <option value="semua">Semua Jadwal (Reset Total)</option>
-                    <option value="kelas">Pilih Beberapa Kelas</option>
-                    <option value="guru">Pilih Beberapa Guru</option>
-                </select>
+                <div style={{flex:'1 1 200px'}}>
+                  <select value={genMode} onChange={e=>{setGenMode(e.target.value); setGenTarget([]);}} style={{...inpSel, marginBottom:0}}>
+                      <option value="semua">Semua Jadwal (Reset Total)</option>
+                      <option value="kelas">Pilih Beberapa Kelas</option>
+                      <option value="guru">Pilih Beberapa Guru</option>
+                  </select>
+                </div>
                 
                 {genMode === 'kelas' && (
-                    <div className="hs" style={{flex:2, minWidth:250, background:'#0d0d14', border:'1px solid #333', borderRadius:8, padding:'10px', maxHeight:160, display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
+                    <div className="hs" style={{flex:'2 1 250px', background:'#0d0d14', border:'1px solid #333', borderRadius:8, padding:'10px', maxHeight:160, display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(110px, 1fr))', gap:8}}>
                         {kelas.map(k => (
-                            <label key={k.id} style={{fontSize:11, color:'#fff', display:'flex', alignItems:'center', gap:6, cursor:'pointer'}}>
+                            <label key={k.id} style={{fontSize:11, color:'#fff', display:'flex', alignItems:'center', gap:6, cursor:'pointer', wordBreak:'break-word'}}>
                                 <input type="checkbox" checked={genTarget.includes(k.id)} onChange={e=>{
                                     if(e.target.checked) setGenTarget(p=>[...p, k.id]);
                                     else setGenTarget(p=>p.filter(x=>x!==k.id));
-                                }} style={{accentColor:'#00e5a0', width:14, height:14}}/>
-                                {k.nama}
+                                }} style={{accentColor:'#00e5a0', flexShrink:0, width:14, height:14}}/>
+                                <span>{k.nama}</span>
                             </label>
                         ))}
                     </div>
                 )}
                 
                 {genMode === 'guru' && (
-                    <div style={{flex:2, minWidth:250, background:'#0d0d14', border:'1px solid #333', borderRadius:8, padding:'10px', maxHeight:160, display:'grid', gridTemplateColumns:'1fr', gap:8}}>
+                    <div className="hs" style={{flex:'2 1 250px', background:'#0d0d14', border:'1px solid #333', borderRadius:8, padding:'10px', maxHeight:160, display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:8}}>
                         {guru.map(g => (
-                            <label key={g.id} style={{fontSize:11, color:'#fff', display:'flex', alignItems:'center', gap:6, cursor:'pointer'}}>
+                            <label key={g.id} style={{fontSize:11, color:'#fff', display:'flex', alignItems:'center', gap:6, cursor:'pointer', wordBreak:'break-word', whiteSpace:'normal'}}>
                                 <input type="checkbox" checked={genTarget.includes(g.id)} onChange={e=>{
                                     if(e.target.checked) setGenTarget(p=>[...p, g.id]);
                                     else setGenTarget(p=>p.filter(x=>x!==g.id));
-                                }} style={{accentColor:'#00e5a0', width:14, height:14}}/>
-                                {g.nama}
+                                }} style={{accentColor:'#00e5a0', flexShrink:0, width:14, height:14}}/>
+                                <span>{g.nama}</span>
                             </label>
                         ))}
                     </div>
                 )}
               </div>
               
-              {/* Filter kelas untuk mode guru */}
               {genMode === 'guru' && genTarget.length > 0 && (
                 <div style={{marginTop:12, background:'#0d0d14', border:'1px dashed rgba(0,229,160,.3)', borderRadius:8, padding:'10px'}}>
                   <label style={{fontSize:10, color:'#00e5a0', fontWeight:700, letterSpacing:1, display:'block', marginBottom:8}}>
                     <i className="fas fa-filter" style={{marginRight:5}}/>FILTER KELAS (Opsional — kosong = semua kelas guru tersebut)
                   </label>
-                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:6}}>
+                  <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(120px, 1fr))', gap:6}}>
                     {kelas.filter(k => assignments.some(a => genTarget.includes(a.guruId) && a.kelasId === k.id)).map(k => (
-                      <label key={k.id} style={{fontSize:11, color:'#ccc', display:'flex', alignItems:'center', gap:6, cursor:'pointer', background:'#161622', padding:'6px 8px', borderRadius:6, border:`1px solid ${genGuruKelas.includes(k.id)?'rgba(0,229,160,.4)':'#252535'}`}}>
+                      <label key={k.id} style={{fontSize:11, color:'#ccc', display:'flex', alignItems:'center', gap:6, cursor:'pointer', background:'#161622', padding:'6px 8px', borderRadius:6, border:`1px solid ${genGuruKelas.includes(k.id)?'rgba(0,229,160,.4)':'#252535'}`, wordBreak:'break-word'}}>
                         <input type="checkbox" checked={genGuruKelas.includes(k.id)} onChange={e=>{
                           if(e.target.checked) setGenGuruKelas(p=>[...p, k.id]);
                           else setGenGuruKelas(p=>p.filter(x=>x!==k.id));
-                        }} style={{accentColor:'#00e5a0', width:13, height:13}}/>
+                        }} style={{accentColor:'#00e5a0', flexShrink:0, width:13, height:13}}/>
                         <span style={{color:genGuruKelas.includes(k.id)?'#00e5a0':'#ccc', fontWeight:genGuruKelas.includes(k.id)?700:400}}>{k.nama}</span>
                       </label>
                     ))}
@@ -1124,7 +1141,6 @@ const AutoGenerate = memo(({akademik,kelas,guru,mapel,assignments,slotConfig,gur
         </div>
       )}
 
-      {/* RIWAYAT GENERATE */}
       {history.length > 0 && status!=='processing' && (
           <div style={{marginTop:24,textAlign:'left'}}>
               <p style={{fontSize:12,color:'#aaa',fontWeight:700,marginBottom:10,fontFamily:'Exo 2'}}>RIWAYAT GENERATE SEBELUMNYA</p>
@@ -1158,7 +1174,7 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
   const [showResetModal,setShowResetModal]=useState(false);
   const [showLockGuruModal,setShowLockGuruModal]=useState(false);
   const [lockGuruTarget,setLockGuruTarget]=useState('');
-  const [resetMode,setResetMode]=useState('unlocked'); // 'all','unlocked','guru','kelas'
+  const [resetMode,setResetMode]=useState('unlocked');
   const [resetTarget,setResetTarget]=useState([]);
 
   const gName=id=>guru.find(g=>g.id===id)?.nama||'—'; const mName=id=>mapel.find(m=>m.id===id)?.nama||'—'; const kName=id=>kelas.find(k=>k.id===id)?.nama||'—';
@@ -1166,6 +1182,7 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
   const validationData = useMemo(() => validateJadwal(kelas, HARI, JP_MAX, slotConfig, jadwal, assignments, lockedSlots), [kelas, slotConfig, jadwal, assignments, lockedSlots]);
 
   const openEdit=(kId,hari,jp, prelockGuruId = null)=>{
+    if(jadwal[kId]?.[hari]?.[jp]?.isUpacara) return; // Upacara tidak boleh diedit
     const cur=jadwal[kId]?.[hari]?.[jp];
     setEditData({mapelId:cur?.mapelId||'',guruId: cur?.guruId || prelockGuruId || '', selectedKelas: kId || '', durasi:1});
     setEditCell({kId,hari,jp, isGuruView: !!prelockGuruId});
@@ -1185,7 +1202,6 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
       if(!nj[kId]) nj[kId]={}; if(!nj[kId][editCell.hari]) nj[kId][editCell.hari]={};
       
       if(editData.mapelId) {
-          // Fitur Multi-slot (Durasi)
           for(let d=0; d<editData.durasi; d++) {
               let targetJp = editCell.jp + d;
               if (targetJp <= JP_MAX) {
@@ -1194,7 +1210,6 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
           }
       } else {
           nj[kId][editCell.hari][editCell.jp] = null;
-          // Un-lock otomatis jika dihapus
           setLockedSlots(plock=>{const n=JSON.parse(JSON.stringify(plock||{}));if(n[kId]?.[editCell.hari])n[kId][editCell.hari][editCell.jp]=false;return n;});
       }
       return nj;
@@ -1203,11 +1218,11 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
   };
 
   const delCell=(kId,hari,jp)=>{
+    if(jadwal[kId]?.[hari]?.[jp]?.isUpacara) { alert('Slot Upacara dipatenkan dan tidak dapat dihapus.'); return; }
     if(!confirm('Hapus isi jam ini?')) return;
     setJadwal(prev=>{const nj=JSON.parse(JSON.stringify(prev));nj[kId][hari][jp]=null;return nj;});
   };
 
-  // Lock semua slot guru tertentu
   const lockGuruSlots=(guruId)=>{
     if(!guruId){alert('Pilih guru terlebih dahulu!');return;}
     const gNama=guru.find(g=>g.id===guruId)?.nama||guruId;
@@ -1232,7 +1247,6 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
     setShowLockGuruModal(false);
   };
 
-  // Unlock semua slot guru tertentu
   const unlockGuruSlots=(guruId)=>{
     if(!guruId) return;
     setLockedSlots(prev=>{
@@ -1251,7 +1265,6 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
     });
   };
 
-  // Reset/hapus jadwal dengan berbagai opsi
   const doResetJadwal=()=>{
     const modeLabel = {all:'SEMUA jadwal (termasuk terkunci)',unlocked:'jadwal TIDAK TERKUNCI saja',guru:'jadwal guru terpilih',kelas:'jadwal kelas terpilih'};
     if(!confirm(`Hapus ${modeLabel[resetMode]}? Tindakan ini TIDAK BISA dibatalkan.`)) return;
@@ -1268,6 +1281,10 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
             else if(resetMode==='unlocked'&&!isLocked) shouldDel=true;
             else if(resetMode==='guru'&&resetTarget.includes(cell.guruId)&&!cell.isUpacara) shouldDel=!isLocked||resetMode==='all';
             else if(resetMode==='kelas'&&resetTarget.includes(k.id)) shouldDel=!isLocked||resetMode==='all';
+            
+            // JANGAN PERNAH HAPUS UPACARA
+            if(cell.isUpacara) shouldDel = false; 
+
             if(shouldDel) nj[k.id][h][j]=null;
           }
         });
@@ -1280,16 +1297,10 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
     setResetTarget([]);
   };
 
-  // Kalkulasi Sisa JP Secara Akurat dan Memfilter Dropdown
   const getRemainingMapel = (kId) => {
       if(!kId) return [];
       const kAssignments = assignments.filter(a => a.kelasId === kId);
-      
-      // Jika mode Guru, HANYA tampilkan mapel yang diampu oleh Guru tersebut di kelas tersebut
-      const relevantAssignments = editCell?.isGuruView 
-            ? kAssignments.filter(a => a.guruId === editData.guruId) 
-            : kAssignments;
-
+      const relevantAssignments = editCell?.isGuruView ? kAssignments.filter(a => a.guruId === editData.guruId) : kAssignments;
       return relevantAssignments.map(ass => {
           let placed = 0;
           HARI.forEach(h => {
@@ -1301,7 +1312,6 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
       }).filter(ass => ass.remaining > 0 || editData.mapelId === ass.mapelId);
   };
 
-  // Hitung berapa JP consecutive yang tersedia dari slot yang sedang diedit
   const getAvailableConsecutive = () => {
     if(!editCell) return 0;
     const kId = editCell.isGuruView ? editData.selectedKelas : editCell.kId;
@@ -1311,7 +1321,8 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
       if(!slotConfig?.[kId]?.[editCell.hari]?.[j]) break;
       const cell = jadwal[kId]?.[editCell.hari]?.[j];
       const isCurrentSlot = (j === editCell.jp);
-      if(cell && !isCurrentSlot) break; // Slot berikut sudah terisi
+      // Stop jika ada cell yg bukan upacara tapi sudah terisi (meskipun kita tidak boleh nabrak upacara)
+      if(cell && !isCurrentSlot) break; 
       count++;
     }
     return count;
@@ -1334,7 +1345,7 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
                 if(!slotConfig?.[k.id]?.[h]?.[jp]) continue; 
                 let ass = jadwal[k.id]?.[h]?.[jp];
                 let waktu = calcTime(k, jp);
-                if(ass?.isUpacara) { ws_data.push([h, `JP ${jp}`, waktu, 'UPACARA', '-']); } 
+                if(ass?.isUpacara) { ws_data.push([h, `JP ${jp}`, waktu, 'UPACARA BENDERA', '-']); } 
                 else if(ass) { ws_data.push([h, `JP ${jp}`, waktu, mName(ass.mapelId), gName(ass.guruId)]); } 
                 else { ws_data.push([h, `JP ${jp}`, waktu, 'KOSONG', '-']); }
             }
@@ -1354,7 +1365,15 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
     let maxJpClass = 1;
     if(type==='kelas' && slotConfig?.[id]) {
         HARI.forEach(h => { for(let j=JP_MAX; j>=1; j--) if(slotConfig[id][h][j] && j > maxJpClass) maxJpClass = j; });
-    } else { maxJpClass = JP_MAX; } 
+    } else if(type==='guru') {
+        const guruKls = assignments.filter(a => a.guruId === id).map(a => a.kelasId);
+        guruKls.forEach(kId => {
+            if (slotConfig?.[kId]) {
+                HARI.forEach(h => { for(let j=JP_MAX; j>=1; j--) if(slotConfig[kId][h][j] && j > maxJpClass) maxJpClass = j; });
+            }
+        });
+        if (maxJpClass === 1) maxJpClass = 8; 
+    }
 
     return(
       <div key={id} className="class-wrap" style={{marginBottom:36}}>
@@ -1367,7 +1386,6 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
           {type==='kelas'&&kObj&&<span className="no-print" style={{fontSize:11,color:'#555',marginLeft:'auto'}}>{kObj.jamMasuk} WIB · {kObj.durasiJp} mnt/JP</span>}
         </div>
         <div style={{overflowX:'auto',border:'1px solid #252535',borderTop:'none',borderBottomLeftRadius:12,borderBottomRightRadius:12,background:'#161622'}}>
-          {/* PERBAIKAN LEBAR TABEL UNTUK GURU AGAR TIDAK KECIL/TERPOTONG */}
           <table style={{width:'100%',borderCollapse:'collapse',minWidth: type==='guru' ? 1100 : 780, tableLayout:'fixed'}}>
             <thead>
               <tr style={{background:'#0d0d14'}}>
@@ -1417,65 +1435,78 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
                       );
                     }else{
                       // GURU VIEW
-                      let af=null,kf=null;
-                      for(const k of kelas){if(jadwal[k.id]?.[hari]?.[i+1]?.guruId===id){af=jadwal[k.id][hari][i+1];kf=k.id;break;}}
+                      const cg={ borderRight:'1px solid #1e1e2e', padding:'6px 5px', verticalAlign:'middle', position:'relative', width:'calc((100% - 75px)/7)', minWidth:0 };
+
+                      // 1. Tampilkan Upacara untuk Guru juga! (Karena guru ikut upacara)
+                      let isUpacaraGlobal = false;
+                      for (const k of kelas) { if (jadwal[k.id]?.[hari]?.[i+1]?.isUpacara) { isUpacaraGlobal = true; break; } }
                       
-                      // Cek apakah slot ini diisi guru LAIN
-                      let otherGuruAf=null, otherGuruKf=null;
-                      if(!af){
-                        for(const k of kelas){
-                          const cell=jadwal[k.id]?.[hari]?.[i+1];
-                          if(cell && !cell.isUpacara && cell.guruId && cell.guruId!==id){
-                            otherGuruAf=cell; otherGuruKf=k.id;
-                            break;
+                      if (isUpacaraGlobal) {
+                          return <td key={hari} className="td-upacara" style={{...cg,background:'rgba(239,68,68,.08)',textAlign:'center'}}><span style={{fontSize:11,fontWeight:900,color:'#f87171',letterSpacing:1,fontFamily:'Exo 2'}}>UPACARA</span></td>;
+                      }
+
+                      let myTasks = [];
+                      for(const k of kelas){
+                          const cell = jadwal[k.id]?.[hari]?.[i+1];
+                          if(cell && !cell.isUpacara && cell.guruId === id) {
+                              myTasks.push({af: cell, kf: k.id});
                           }
-                        }
                       }
                       
-                      // Style cell dasar - height tetap, overflow tersembunyi, tidak ada whitespace aneh
-                      const cg={
-                        borderRight:'1px solid #1e1e2e',
-                        padding:'6px 5px',
-                        verticalAlign:'middle',
-                        position:'relative',
-                        width:'calc((100% - 75px)/7)',
-                        minWidth:0,
-                      };
-                      
-                      // KOSONG TOTAL - slot ini belum ada yang mengisi
-                      if(!af && !otherGuruAf) return(
-                          <td key={hari} className="td-empty jadwal-cell" style={{...cg,background:'#111118',cursor:'pointer',textAlign:'center'}} onClick={()=>{
-                              const kelasGuru = kelas.filter(k => assignments.some(a => a.guruId === id && a.kelasId === k.id));
-                              openEdit(kelasGuru[0]?.id || kelas[0]?.id, hari, i+1, id);
-                          }}>
-                            <i className="fas fa-plus" style={{fontSize:11,color:'#333',display:'block'}}/>
-                          </td>
-                      );
-                      
-                      // SLOT DIISI GURU LAIN → warna redup, info minimal
-                      if(!af && otherGuruAf) return(
-                          <td key={hari} style={{...cg, background:'#0e0e18', textAlign:'center', borderLeft:'2px solid #252540'}}>
-                            <div style={{overflow:'hidden'}}>
-                              <div style={{fontSize:9,color:'#404058',fontWeight:700,textTransform:'uppercase',letterSpacing:0.5,marginBottom:2}}>TERISI</div>
-                              <div style={{fontSize:10,color:'#383858',fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'100%'}}>{mName(otherGuruAf.mapelId)}</div>
-                              <div style={{fontSize:9,color:'#2d2d48',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'100%'}}>{kName(otherGuruKf)}</div>
-                            </div>
-                          </td>
-                      );
-                      
-                      // SLOT AKTIF GURU INI → terang, jelas
-                      return(
-                        <td key={hari} className="td-guru-mapel jadwal-cell" style={{...cg,background:'rgba(0,184,212,.06)',cursor:'pointer',borderLeft:'2px solid rgba(0,184,212,.4)'}} onClick={()=>openEdit(kf,hari,i+1, id)}>
-                          <div style={{overflow:'hidden'}}>
-                            <div style={{fontSize:11,fontWeight:800,color:'#00b8d4',fontFamily:'Exo 2',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>{mName(af.mapelId)}</div>
-                            <div style={{display:'inline-block',fontSize:9,color:'#888',padding:'1px 5px',borderRadius:4,border:'1px solid #2a2a3e',background:'#0d0d14',maxWidth:'100%',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{kName(kf)}</div>
-                          </div>
-                          <div className="ca no-print">
-                              <button className="cbtn cbtn-e" onClick={e=>{e.stopPropagation();openEdit(kf,hari,i+1, id);}}><i className="fas fa-pen"/></button>
-                              <button className="cbtn cbtn-d" onClick={e=>{e.stopPropagation();delCell(kf,hari,i+1);}}><i className="fas fa-times"/></button>
-                          </div>
-                        </td>
-                      );
+                      // BENTROK
+                      if(myTasks.length > 1) {
+                          return (
+                              <td key={hari} style={{...cg, background:'rgba(239,68,68,.1)', borderLeft:'2px solid #f87171', textAlign:'center'}}>
+                                  <div style={{color:'#f87171', fontSize:10, fontWeight:900, marginBottom:4, letterSpacing:1}}>BENTROK!</div>
+                                  {myTasks.map((t, idx) => <div key={idx} style={{fontSize:9, color:'#fca5a5', marginBottom:2}}>{mName(t.af.mapelId)} ({kName(t.kf)})</div>)}
+                              </td>
+                          );
+                      } 
+                      // NORMAL MENGAJAR
+                      else if(myTasks.length === 1) {
+                          let af = myTasks[0].af; let kf = myTasks[0].kf;
+                          return (
+                            <td key={hari} className="td-guru-mapel jadwal-cell" style={{...cg,background:'rgba(0,184,212,.06)',cursor:'pointer',borderLeft:'2px solid rgba(0,184,212,.4)'}} onClick={()=>openEdit(kf,hari,i+1, id)}>
+                              <div style={{overflow:'hidden'}}>
+                                <div style={{fontSize:11,fontWeight:800,color:'#00b8d4',fontFamily:'Exo 2',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>{mName(af.mapelId)}</div>
+                                <div style={{display:'inline-block',fontSize:9,color:'#888',padding:'1px 5px',borderRadius:4,border:'1px solid #2a2a3e',background:'#0d0d14',maxWidth:'100%',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{kName(kf)}</div>
+                              </div>
+                              <div className="ca no-print">
+                                  <button className="cbtn cbtn-e" onClick={e=>{e.stopPropagation();openEdit(kf,hari,i+1, id);}}><i className="fas fa-pen"/></button>
+                                  <button className="cbtn cbtn-d" onClick={e=>{e.stopPropagation();delCell(kf,hari,i+1);}}><i className="fas fa-times"/></button>
+                              </div>
+                            </td>
+                          );
+                      } 
+                      // TIDAK ADA MENGAJAR - CEK APAKAH KELAS-NYA SIBUK
+                      else {
+                          let occupiedMyClasses = [];
+                          const myClasses = kelas.filter(k => assignments.some(a => a.guruId === id && a.kelasId === k.id));
+                          
+                          myClasses.forEach(k => {
+                              const cell = jadwal[k.id]?.[hari]?.[i+1];
+                              if (cell && (cell.guruId !== id || cell.isUpacara)) {
+                                  occupiedMyClasses.push(k.nama);
+                              }
+                          });
+
+                          if (myClasses.length > 0 && occupiedMyClasses.length === myClasses.length) {
+                              return (
+                                  <td key={hari} style={{...cg, background:'#151520', textAlign:'center', borderLeft:'2px solid #333', opacity:0.7}}>
+                                      <div style={{fontSize:9, color:'#555', fontWeight:700, letterSpacing:0.5}}>KELAS PENUH</div>
+                                  </td>
+                              );
+                          } else {
+                              return (
+                                  <td key={hari} className="td-empty jadwal-cell" style={{...cg,background:'#111118',cursor:'pointer',textAlign:'center'}} onClick={()=>{
+                                      const fallbackKls = myClasses.find(k => !occupiedMyClasses.includes(k.nama));
+                                      openEdit(fallbackKls?.id || kelas[0]?.id, hari, i+1, id);
+                                  }}>
+                                    <i className="fas fa-plus" style={{fontSize:11,color:'#333',display:'block'}}/>
+                                  </td>
+                              );
+                          }
+                      }
                     }
                   })}
                 </tr>
@@ -1489,15 +1520,12 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
 
   const selStyle={background:'#161622',border:'1px solid #333',borderRadius:8,padding:'7px 12px',fontSize:12,fontWeight:700,color:'#fff',outline:'none'};
 
-  // Menentukan Sisa JP dari mapel yang sedang dipilih untuk opsi dropdown Durasi
   const activeRemainingMapels = getRemainingMapel(editCell?.isGuruView ? editData.selectedKelas : editCell?.kId);
   const selectedMapelDetail = activeRemainingMapels.find(a => a.mapelId === editData.mapelId);
   const maxDurasiFill = selectedMapelDetail ? selectedMapelDetail.remaining : 1;
   const availableConsecutive = getAvailableConsecutive();
   const maxDurasi = Math.min(maxDurasiFill, availableConsecutive);
   const isSingleSlotBlocked = availableConsecutive === 1 && editData.mapelId;
-
-  // List Kelas khusus untuk Guru View (Hanya kelas yang diajar)
   const guruClassesList = editCell?.isGuruView ? kelas.filter(k => assignments.some(a => a.guruId === editData.guruId && a.kelasId === k.id)) : kelas;
 
   return(
@@ -1516,10 +1544,8 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
           
           {viewMode==='semua_kelas'&&<button onClick={()=>setLockMode(!lockMode)} style={{background:lockMode?'rgba(245,158,11,.15)':'#161622',color:lockMode?'#fcd34d':'#aaa',border:`1px solid ${lockMode?'rgba(245,158,11,.4)':'#333'}`,borderRadius:8,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer',marginLeft:8}}><i className={`fas ${lockMode?'fa-lock':'fa-unlock'}`} style={{marginRight:6}}/> Mode Lock Manual</button>}
           
-          {/* Tombol Lock Per Guru */}
           <button onClick={()=>{setLockGuruTarget(guru[0]?.id||'');setShowLockGuruModal(true);}} style={{background:'#161622',color:'#fbbf24',border:'1px solid rgba(245,158,11,.3)',borderRadius:8,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer'}}><i className="fas fa-user-lock" style={{marginRight:6}}/>Lock Per Guru</button>
           
-          {/* Tombol Reset Jadwal */}
           <button onClick={()=>{setResetTarget([]);setResetMode('unlocked');setShowResetModal(true);}} style={{background:'#161622',color:'#f87171',border:'1px solid rgba(239,68,68,.3)',borderRadius:8,padding:'7px 12px',fontSize:12,fontWeight:700,cursor:'pointer'}}><i className="fas fa-trash-restore" style={{marginRight:6}}/>Reset Jadwal</button>
         </div>
         <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
@@ -1550,7 +1576,6 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
               )}
             </div>
 
-            {/* WARNING: slot tunggal 1 JP */}
             {availableConsecutive === 1 && (
               <div style={{background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.35)',borderRadius:8,padding:'10px 12px',marginBottom:14,display:'flex',gap:8,alignItems:'center'}}>
                 <i className="fas fa-ban" style={{color:'#f87171',fontSize:16}}/>
@@ -1561,12 +1586,11 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
               </div>
             )}
 
-            {/* Jika mode Guru View Edit */}
             {editCell.isGuruView && (
                 <div style={{marginBottom:12}}>
                     <label style={{fontSize:10,color:'#555',fontWeight:700,letterSpacing:2,display:'block',marginBottom:5}}>PILIH KELAS (Yang Diajar)</label>
                     <select value={editData.selectedKelas || ''} onChange={e=>setEditData({...editData, selectedKelas:e.target.value, mapelId:'', durasi:1})} style={{background:'#0d0d14',border:'1px solid #333',borderRadius:8,padding:'9px 12px',fontSize:13,color:'#fff',outline:'none',width:'100%'}}>
-                        {guruClassesList.length===0 && <option value="">— Tidak ada tugas kelas —</option>}
+                        {guruClassesList.length===0 && <option value="">— Tidak ada tugas kelas (Kosong/Sibuk) —</option>}
                         {guruClassesList.map(k => <option key={k.id} value={k.id}>{k.nama}</option>)}
                     </select>
                 </div>
@@ -1582,7 +1606,6 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
               </select>
             </div>
 
-            {/* OPSI DURASI JP (Multi-slot otomatis) */}
             {editData.mapelId && availableConsecutive > 1 && (
                 <div style={{marginBottom:12, padding:'10px', background:'rgba(0,184,212,.05)', border:'1px solid rgba(0,184,212,.2)', borderRadius:8}}>
                   <label style={{fontSize:10,color:'#00b8d4',fontWeight:700,letterSpacing:1,display:'block',marginBottom:5}}>DURASI PENGISIAN (max {availableConsecutive} JP berurutan tersedia)</label>
@@ -1613,7 +1636,6 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
         </div>
       )}
 
-      {/* MODAL LOCK PER GURU */}
       {showLockGuruModal&&(
         <div className="modal-bg">
           <div className="modal-box ain" style={{maxWidth:440}}>
@@ -1646,7 +1668,6 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
         </div>
       )}
 
-      {/* MODAL RESET JADWAL */}
       {showResetModal&&(
         <div className="modal-bg">
           <div className="modal-box ain" style={{maxWidth:520}}>
@@ -1762,7 +1783,7 @@ const App = ()=>{
       
       <div className="no-print" style={{background:'rgba(0,229,160,.05)', padding:'4px 0', borderBottom:'1px solid #252535'}}>
           <marquee scrollamount="5" style={{color:'#00e5a0', fontSize:12, fontWeight:700, fontFamily:'Exo 2', display:'block', marginTop:'2px'}}>
-              🚀 SELAMAT DATANG DI SIMJAS PRO v3.5 - SISTEM MANAJEMEN JADWAL CERDAS | PASTIKAN SELALU BACKUP DATA ANDA DI MENU DASHBOARD 🚀
+              🚀 SELAMAT DATANG DI SIMJAS PRO v3.7 - SISTEM MANAJEMEN JADWAL CERDAS | PASTIKAN SELALU BACKUP DATA ANDA DI MENU DASHBOARD 🚀
           </marquee>
       </div>
 

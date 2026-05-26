@@ -889,20 +889,26 @@ const AutoGenerate = memo(({akademik,kelas,guru,mapel,assignments,slotConfig,gur
           // Jangan hapus yang dilock manual
           if (isLocked) shouldClear = false;
 
-          // FORCE UPACARA (Kunci Paten Global Senin JP 1, tak terhapus apa pun)
-          if (h === 'Senin' && jp === 1 && slotConfig?.[k.id]?.['Senin']?.[1]) {
-             nj_base[k.id]['Senin'][1] = {isUpacara:true, mapelId:'UPC'};
-             shouldClear = false;
+                // Normalisasi jam masuk: ganti titik jadi titik dua, jika kosong anggap '99:99' (bukan pagi)
+          const jamMasuk = k.jamMasuk ? k.jamMasuk.replace('.', ':') : '99:99';
+
+          // FORCE UPACARA (Kunci Paten Global Senin JP 1, hanya untuk kelas pagi)
+          if (h === 'Senin' && jp === 1 && slotConfig?.[k.id]?.['Senin']?.[1] && jamMasuk <= '08:00') {
+              nj_base[k.id]['Senin'][1] = {isUpacara:true, mapelId:'UPC'};
+              shouldClear = false;
           }
 
           if (shouldClear) nj_base[k.id][h][jp] = null;
-          if (!gt_base[h][jp]) gt_base[h][jp]={};
+          if (!gt_base[h][jp]) gt_base[h][jp] = {};
           
           const existCell = nj_base[k.id]?.[h]?.[jp];
-          if(existCell && existCell.guruId) gt_base[h][jp][existCell.guruId] = true;
+          if (existCell && existCell.guruId) {
+              gt_base[h][jp][existCell.guruId] = true;
+          }
         }
       });
     });
+
 
     setLog('Memproses Pengelompokan (Chunks) & Aturan Satu Blok...'); setProgress(20);
     await new Promise(r=>setTimeout(r,50));

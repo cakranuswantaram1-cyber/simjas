@@ -247,7 +247,7 @@ const validateJadwal = (kelas, HARI, JP_MAX, slotConfig, jadwal, assignments, lo
 
 const ValidationPanel = ({ validationData, onGoToKelas }) => {
     const [filter, setFilter] = useState('semua');
-    const [openDetail, setOpenDetail] = useState(null);
+    const [isCollapsed, setIsCollapsed] = useState(true);
 
     const filtered = validationData.reports.filter(r => {
         if(filter === 'valid') return r.valid;
@@ -260,51 +260,71 @@ const ValidationPanel = ({ validationData, onGoToKelas }) => {
 
     return (
         <div className="no-print" style={{background:'#161622', border:'1px solid #252535', borderRadius:12, padding:16, marginBottom:20}}>
-            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
-                <h3 style={{fontSize:14, fontWeight:900, color:'#fff', fontFamily:'Exo 2'}}><i className="fas fa-shield-alt" style={{color:'#00e5a0', marginRight:8}}/>STATUS VALIDASI JADWAL</h3>
-                <div style={{display:'flex', gap:8}}>
-                    <button onClick={()=>setFilter('semua')} style={{background:filter==='semua'?'rgba(0,184,212,.2)':'#0d0d14', color:filter==='semua'?'#00b8d4':'#aaa', border:'1px solid #333', padding:'4px 10px', borderRadius:6, fontSize:11, fontWeight:700}}>Semua ({validationData.reports.length})</button>
-                    <button onClick={()=>setFilter('valid')} style={{background:filter==='valid'?'rgba(0,229,160,.2)':'#0d0d14', color:filter==='valid'?'#00e5a0':'#aaa', border:'1px solid #333', padding:'4px 10px', borderRadius:6, fontSize:11, fontWeight:700}}>Valid ({vCount})</button>
-                    <button onClick={()=>setFilter('invalid')} style={{background:filter==='invalid'?'rgba(239,68,68,.2)':'#0d0d14', color:filter==='invalid'?'#f87171':'#aaa', border:'1px solid #333', padding:'4px 10px', borderRadius:6, fontSize:11, fontWeight:700}}>Bermasalah ({iCount})</button>
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', cursor:'pointer'}} onClick={() => setIsCollapsed(!isCollapsed)}>
+                <div style={{display:'flex', alignItems:'center', gap: 12}}>
+                    <h3 style={{fontSize:14, fontWeight:900, color:'#fff', fontFamily:'Exo 2', margin:0}}>
+                        <i className="fas fa-shield-alt" style={{color:iCount===0?'#00e5a0':'#f87171', marginRight:8}}/>
+                        STATUS VALIDASI JADWAL
+                    </h3>
+                    <div style={{display:'flex', gap: 8}}>
+                        {iCount === 0 ? 
+                            <span style={{fontSize:11, color:'#00e5a0', background:'rgba(0,229,160,.1)', padding:'3px 8px', borderRadius:6, fontWeight:700}}>SEMUA VALID ✅</span> :
+                            <span style={{fontSize:11, color:'#f87171', background:'rgba(239,68,68,.1)', padding:'3px 8px', borderRadius:6, fontWeight:700}}>{iCount} KELAS BERMASALAH ❌</span>
+                        }
+                    </div>
+                </div>
+                <div style={{color:'#aaa', fontSize: 14, display: 'flex', alignItems: 'center', gap: 6}}>
+                    <span style={{fontSize: 11, fontWeight: 700}}>{isCollapsed ? 'TAMPILKAN DETAIL' : 'SEMBUNYIKAN'}</span>
+                    <i className={isCollapsed ? "fas fa-chevron-down" : "fas fa-chevron-up"} />
                 </div>
             </div>
 
-            {validationData.teacherConflicts.length > 0 && (
-                <div style={{background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)', borderRadius:8, padding:10, marginBottom:12}}>
-                    <p style={{fontSize:12, color:'#fca5a5', fontWeight:700, marginBottom:4}}><i className="fas fa-exclamation-triangle"/> BENTROK GURU TERDETEKSI</p>
-                    <ul style={{fontSize:11, color:'#f87171', paddingLeft:16, listStyle:'disc'}}>
-                        {validationData.teacherConflicts.slice(0,5).map((err,i) => <li key={i}>{err}</li>)}
-                        {validationData.teacherConflicts.length > 5 && <li>...dan {validationData.teacherConflicts.length - 5} lainnya</li>}
-                    </ul>
+            {!isCollapsed && (
+                <div style={{marginTop: 16, paddingTop: 16, borderTop: '1px dashed #333'}}>
+                    <div style={{display:'flex', gap:8, marginBottom: 12}}>
+                        <button onClick={(e)=>{e.stopPropagation(); setFilter('semua');}} style={{background:filter==='semua'?'rgba(0,184,212,.2)':'#0d0d14', color:filter==='semua'?'#00b8d4':'#aaa', border:'1px solid #333', padding:'4px 10px', borderRadius:6, fontSize:11, fontWeight:700}}>Semua ({validationData.reports.length})</button>
+                        <button onClick={(e)=>{e.stopPropagation(); setFilter('valid');}} style={{background:filter==='valid'?'rgba(0,229,160,.2)':'#0d0d14', color:filter==='valid'?'#00e5a0':'#aaa', border:'1px solid #333', padding:'4px 10px', borderRadius:6, fontSize:11, fontWeight:700}}>Valid ({vCount})</button>
+                        <button onClick={(e)=>{e.stopPropagation(); setFilter('invalid');}} style={{background:filter==='invalid'?'rgba(239,68,68,.2)':'#0d0d14', color:filter==='invalid'?'#f87171':'#aaa', border:'1px solid #333', padding:'4px 10px', borderRadius:6, fontSize:11, fontWeight:700}}>Bermasalah ({iCount})</button>
+                    </div>
+
+                    {validationData.teacherConflicts.length > 0 && (
+                        <div style={{background:'rgba(239,68,68,.1)', border:'1px solid rgba(239,68,68,.3)', borderRadius:8, padding:10, marginBottom:12}}>
+                            <p style={{fontSize:12, color:'#fca5a5', fontWeight:700, marginBottom:4}}><i className="fas fa-exclamation-triangle"/> BENTROK GURU TERDETEKSI</p>
+                            <ul style={{fontSize:11, color:'#f87171', paddingLeft:16, listStyle:'disc'}}>
+                                {validationData.teacherConflicts.slice(0,5).map((err,i) => <li key={i}>{err}</li>)}
+                                {validationData.teacherConflicts.length > 5 && <li>...dan {validationData.teacherConflicts.length - 5} lainnya</li>}
+                            </ul>
+                        </div>
+                    )}
+
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:10}}>
+                        {filtered.map(r => (
+                            <div key={r.kId} style={{background:'#0d0d14', border:`1px solid ${r.valid ? 'rgba(0,229,160,.3)' : 'rgba(239,68,68,.3)'}`, borderRadius:8, padding:12, cursor: !r.valid && onGoToKelas ? 'pointer' : 'default', transition:'border-color .15s'}}
+                              onClick={()=>{ if(!r.valid && onGoToKelas) onGoToKelas(r.kId); }}
+                              onMouseEnter={e=>{ if(!r.valid && onGoToKelas) e.currentTarget.style.borderColor='rgba(0,184,212,.6)'; }}
+                              onMouseLeave={e=>{ if(!r.valid && onGoToKelas) e.currentTarget.style.borderColor='rgba(239,68,68,.3)'; }}
+                            >
+                                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4}}>
+                                    <strong style={{fontSize:12, color:'#fff'}}>{r.nama}</strong>
+                                    {r.valid ? 
+                                        <span style={{fontSize:10, color:'#00e5a0', background:'rgba(0,229,160,.1)', padding:'2px 6px', borderRadius:4, fontWeight:700, flexShrink:0}}>✅ VALID</span> : 
+                                        <span style={{fontSize:10, color:'#f87171', background:'rgba(239,68,68,.1)', padding:'2px 6px', borderRadius:4, fontWeight:700, flexShrink:0}}>❌ ERROR</span>
+                                    }
+                                </div>
+                                {!r.valid && (
+                                    <>
+                                      <ul style={{fontSize:10, color:'#fca5a5', marginTop:6, paddingLeft:14, listStyle:'disc'}}>
+                                          {r.errors.slice(0,3).map((e,i) => <li key={i} style={{marginBottom:2}}>{e}</li>)}
+                                          {r.errors.length > 3 && <li style={{color:'#555'}}>...+{r.errors.length - 3} lainnya</li>}
+                                      </ul>
+                                      {onGoToKelas && <p style={{fontSize:9,color:'#00b8d4',marginTop:6,fontWeight:700}}><i className="fas fa-arrow-right" style={{marginRight:3}}/>Klik untuk perbaiki</p>}
+                                    </>
+                                )}
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
-
-            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:10}}>
-                {filtered.map(r => (
-                    <div key={r.kId} style={{background:'#0d0d14', border:`1px solid ${r.valid ? 'rgba(0,229,160,.3)' : 'rgba(239,68,68,.3)'}`, borderRadius:8, padding:12, cursor: !r.valid && onGoToKelas ? 'pointer' : 'default', transition:'border-color .15s'}}
-                      onClick={()=>{ if(!r.valid && onGoToKelas) onGoToKelas(r.kId); }}
-                      onMouseEnter={e=>{ if(!r.valid && onGoToKelas) e.currentTarget.style.borderColor='rgba(0,184,212,.6)'; }}
-                      onMouseLeave={e=>{ if(!r.valid && onGoToKelas) e.currentTarget.style.borderColor='rgba(239,68,68,.3)'; }}
-                    >
-                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4}}>
-                            <strong style={{fontSize:12, color:'#fff'}}>{r.nama}</strong>
-                            {r.valid ? 
-                                <span style={{fontSize:10, color:'#00e5a0', background:'rgba(0,229,160,.1)', padding:'2px 6px', borderRadius:4, fontWeight:700, flexShrink:0}}>✅ VALID</span> : 
-                                <span style={{fontSize:10, color:'#f87171', background:'rgba(239,68,68,.1)', padding:'2px 6px', borderRadius:4, fontWeight:700, flexShrink:0}}>❌ ERROR</span>
-                            }
-                        </div>
-                        {!r.valid && (
-                            <>
-                              <ul style={{fontSize:10, color:'#fca5a5', marginTop:6, paddingLeft:14, listStyle:'disc'}}>
-                                  {r.errors.slice(0,3).map((e,i) => <li key={i} style={{marginBottom:2}}>{e}</li>)}
-                                  {r.errors.length > 3 && <li style={{color:'#555'}}>...+{r.errors.length - 3} lainnya</li>}
-                              </ul>
-                              {onGoToKelas && <p style={{fontSize:9,color:'#00b8d4',marginTop:6,fontWeight:700}}><i className="fas fa-arrow-right" style={{marginRight:3}}/>Klik untuk perbaiki jadwal kelas ini</p>}
-                            </>
-                        )}
-                    </div>
-                ))}
-            </div>
         </div>
     );
 };

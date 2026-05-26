@@ -1274,7 +1274,11 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
         HARI.forEach(h=>{
           for(let j=1;j<=JP_MAX;j++){
             const cell=nj[k.id]?.[h]?.[j];
-            if(!cell) return;
+            
+            // PERBAIKAN: Menggunakan 'continue', bukan 'return'. 
+            // Agar jika ada jam kosong di tengah, sistem tetap lanjut menghapus jam berikutnya.
+            if(!cell) continue; 
+            
             const isLocked=!!(lockedSlots?.[k.id]?.[h]?.[j]);
             let shouldDel=false;
             if(resetMode==='all') shouldDel=true;
@@ -1282,8 +1286,8 @@ const GridJadwal = memo(({akademik,kelas,guru,mapel,jadwal,assignments,slotConfi
             else if(resetMode==='guru'&&resetTarget.includes(cell.guruId)&&!cell.isUpacara) shouldDel=!isLocked||resetMode==='all';
             else if(resetMode==='kelas'&&resetTarget.includes(k.id)) shouldDel=!isLocked||resetMode==='all';
             
-            // JANGAN PERNAH HAPUS UPACARA
-            if(cell.isUpacara) shouldDel = false; 
+            // Jaga Upacara agar tidak terhapus, KECUALI user memilih Reset Total (all)
+            if(cell.isUpacara && resetMode !== 'all') shouldDel = false; 
 
             if(shouldDel) nj[k.id][h][j]=null;
           }

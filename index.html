@@ -10933,8 +10933,8 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
 
     // ── KOP HTML (presisi 3-kolom: logo kiri | teks tengah | logo kanan) ──
     var logoBox = function(src, align){
-      return '<div style="width:72px;flex-shrink:0;display:flex;align-items:center;justify-content:'+(align==='left'?'flex-start':'flex-end')+';">'
-        +(src?'<img src="'+src+'" style="max-width:72px;max-height:88px;object-fit:contain;display:block;">':'')
+      return '<div style="width:92px;flex-shrink:0;display:flex;align-items:center;justify-content:'+(align==='left'?'flex-start':'flex-end')+';">'
+        +(src?'<img src="'+src+'" style="max-width:92px;max-height:108px;object-fit:contain;display:block;">':'')
         +'</div>';
     };
     var kopTeks = '<div style="flex:1;text-align:center;padding:0 8px;">'
@@ -10945,7 +10945,7 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
         +[skData.nsm?'NSM: '+skData.nsm:'',skData.npsn?'NPSN: '+skData.npsn:'',skData.telp?'Telp: '+skData.telp:'',skData.email?'Email: '+skData.email:''].filter(Boolean).join('&nbsp;&nbsp;|&nbsp;&nbsp;')
       +'</p>'
       +'</div>';
-    var kopHtml = '<div style="display:flex;align-items:center;border-bottom:3px solid #000;border-top:1px solid #000;padding:6px 0 10px;margin-bottom:18px;">'
+    var kopHtml = '<div style="display:flex;align-items:center;border-bottom:3px solid #000;padding:0 0 8px;margin-bottom:18px;">'
       +logoBox(skData.logoKiri,'left')
       +kopTeks
       +logoBox(skData.logoKanan,'right')
@@ -11020,12 +11020,12 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
           var kelasOtomatisCetak = kelas.find(function(k){return k.waliKelasId===g.id;});
           var statusStr = g.statusWali || (kelasOtomatisCetak ? 'Wali Kelas '+kelasOtomatisCetak.nama : '') || (g.tugasTambahan.filter(function(tt){return tt.jabatan.toLowerCase().includes('wali kelas');}).map(function(tt){return tt.jabatan;}).join(', ')||'Guru Mata Pelajaran');
           var nuptkStr = g.nuptk ? '<br><span style="font-size:10pt;color:#555;">NUPTK. '+g.nuptk+'</span>' : '';
-          return '<tr style="background:'+(gi%2===0?'#fff':'#fafafa')+';">'
-            +'<td style="text-align:center;font-weight:bold;">'+(gi+1)+'</td>'
-            +'<td><b>'+g.nama+'</b>'+nuptkStr+'</td>'
-            +'<td style="text-align:center;">'+statusStr+'</td>'
-            +'<td>'+mapelStr+'</td>'
-            +'<td style="text-align:center;font-weight:bold;">'+g.totalJP+' jam</td>'
+          return '<tr style="background:'+(gi%2===0?'#fff':'#fafafa')+';page-break-inside:avoid;break-inside:avoid;">'
+            +'<td style="text-align:center;font-weight:bold;padding:10px 8px;">'+(gi+1)+'</td>'
+            +'<td style="padding:10px 10px;"><b>'+g.nama+'</b>'+nuptkStr+'</td>'
+            +'<td style="text-align:center;padding:10px 8px;">'+statusStr+'</td>'
+            +'<td style="padding:10px 10px;">'+mapelStr+'</td>'
+            +'<td style="text-align:center;font-weight:bold;padding:10px 8px;">'+g.totalJP+' jam</td>'
             +'</tr>';
         }).join('');
 
@@ -11042,11 +11042,11 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
       ? '<tr><td colspan="4" style="text-align:center;color:#888;font-style:italic;padding:16px;">Belum ada tugas tambahan</td></tr>'
       : skData.tugasTambahan.map(function(tt,i){
           var gx=guru.find(function(x){return x.id===tt.guruId;});
-          return '<tr style="background:'+(i%2===0?'#fff':'#fafafa')+';">'
-            +'<td style="text-align:center;font-weight:bold;">'+(i+1)+'</td>'
-            +'<td><b>'+(gx?gx.nama:'—')+'</b></td>'
-            +'<td style="font-weight:bold;">'+tt.jabatan+'</td>'
-            +'<td style="text-align:justify;">'+(tt.uraianTugas||'—')+'</td>'
+          return '<tr style="background:'+(i%2===0?'#fff':'#fafafa')+';page-break-inside:avoid;break-inside:avoid;">'
+            +'<td style="text-align:center;font-weight:bold;padding:10px 8px;">'+(i+1)+'</td>'
+            +'<td style="padding:10px 10px;"><b>'+(gx?gx.nama:'—')+'</b></td>'
+            +'<td style="font-weight:bold;padding:10px 10px;">'+tt.jabatan+'</td>'
+            +'<td style="text-align:justify;padding:10px 10px;">'+(tt.uraianTugas||'—')+'</td>'
             +'</tr>';
         }).join('');
 
@@ -11072,14 +11072,14 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
           var ket = totalJam>=24?'Memenuhi 24 jam':'Belum memenuhi – perlu penambahan jam/tugas';
           var ekuivTxt = totalEkuiv===0?'—':(ekuivWali>0&&ekuivStruktur>0?(ekuivWali+' + '+ekuivStruktur):totalEkuiv);
           var ttStr = ttList.length>0?ttList.map(function(tt){return tt.jabatan;}).join('; '):'—';
-          return '<tr style="background:'+(gi%2===0?'#fff':'#fafafa')+';">'
-            +'<td style="text-align:center;font-weight:bold;">'+(gi+1)+'</td>'
-            +'<td><b>'+g.nama+'</b></td>'
-            +'<td style="text-align:center;">'+jamMengajar+'</td>'
-            +'<td>'+ttStr+'</td>'
-            +'<td style="text-align:center;">'+ekuivTxt+'</td>'
-            +'<td style="text-align:center;font-weight:bold;font-size:13pt;">'+totalJam+'</td>'
-            +'<td style="font-size:10.5pt;color:'+(totalJam>=24?'#000':'#c00')+';">'+ket+'</td>'
+          return '<tr style="background:'+(gi%2===0?'#fff':'#fafafa')+';page-break-inside:avoid;break-inside:avoid;">'
+            +'<td style="text-align:center;font-weight:bold;padding:10px 8px;">'+(gi+1)+'</td>'
+            +'<td style="padding:10px 10px;"><b>'+g.nama+'</b></td>'
+            +'<td style="text-align:center;padding:10px 8px;">'+jamMengajar+'</td>'
+            +'<td style="padding:10px 10px;">'+ttStr+'</td>'
+            +'<td style="text-align:center;padding:10px 8px;">'+ekuivTxt+'</td>'
+            +'<td style="text-align:center;font-weight:bold;font-size:13pt;padding:10px 8px;">'+totalJam+'</td>'
+            +'<td style="font-size:10.5pt;color:'+(totalJam>=24?'#000':'#c00')+';padding:10px 10px;">'+ket+'</td>'
             +'</tr>';
         }).join('');
 
@@ -11114,12 +11114,12 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
 
     var halamanLamp4 = '';
     if(guruDenganJadwal.length>0){
-      // Bagi guru menjadi beberapa halaman, maksimal 2 guru per halaman (tabel JP×Hari cukup tinggi) supaya tetap lega dan tidak mepet ke footer
-      var GURU_PER_HALAMAN = 2;
+      // 1 guru = 1 halaman (tidak digabung dengan guru lain)
+      var GURU_PER_HALAMAN = 1;
       var chunks = [];
       for(var ci=0; ci<guruDenganJadwal.length; ci+=GURU_PER_HALAMAN){ chunks.push(guruDenganJadwal.slice(ci, ci+GURU_PER_HALAMAN)); }
       halamanLamp4 = chunks.map(function(chunk, ciIdx){
-        return '<div class="halaman">'
+        return '<div class="lampiran-blok">'
           +lampiranHeader('IV','JADWAL MENGAJAR GURU PER MINGGU')
           +(ciIdx>0?'<p style="font-size:10pt;color:#777;margin-bottom:18px;">(lanjutan)</p>':'')
           +chunk.map(buatTabelJadwalGuru).join('')
@@ -11136,31 +11136,49 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
       +'<style>'
       +'*{box-sizing:border-box;margin:0;padding:0;}'
       +'html,body{background:#fff;color:#000;}'
-      +'body{font-family:"Times New Roman",Times,serif;font-size:12pt;line-height:1.5;-webkit-font-smoothing:antialiased;}'
-      +'.halaman{width:210mm;min-height:330mm;margin:0 auto 12mm;padding:32mm 25mm 28mm 30mm;page-break-after:always;background:#fff;position:relative;}'
-      +'.halaman:last-child{page-break-after:auto;}'
+      +'body{font-family:"Times New Roman",Times,serif;font-size:12pt;line-height:1.6;-webkit-font-smoothing:antialiased;}'
+      /* ── @page: margin resmi F4/Folio sesuai aturan surat dinas ── */
+      +'@page{size:210mm 330mm;margin:25mm 20mm 20mm 25mm;}'
+      /* ── Blok halaman SK (1 halaman penuh, tidak overflow) ── */
+      +'.halaman{page-break-after:always;break-after:always;background:#fff;}'
+      +'.halaman:last-child{page-break-after:auto;break-after:auto;}'
+      /* ── Blok lampiran: bebas mengalir ke halaman berikutnya ── */
+      +'.lampiran-blok{page-break-before:always;break-before:always;}'
       +'p{margin:0;}'
-      +'.footer-note{font-size:9pt;color:#aaa;text-align:center;margin-top:36px;border-top:1px dashed #ddd;padding-top:10px;}'
-      // Tabel tata-letak (Menimbang/Mengingat/Diktum/Memperhatikan) — TANPA garis/kotak sama sekali
+      +'.footer-note{font-size:9pt;color:#aaa;text-align:center;margin-top:20px;border-top:1px dashed #ccc;padding-top:10px;}'
+      /* ── Tabel layout (SK: Menimbang/Mengingat) tanpa garis ── */
       +'table.tlayout{width:100%;border-collapse:collapse;margin-bottom:10px;}'
       +'table.tlayout td{border:none;padding:0 0 6px 0;font-size:12pt;vertical-align:top;}'
-      // Tabel data (Lampiran I/II/III/IV) — dengan garis kotak rapi
-      +'table.tdata{width:100%;border-collapse:collapse;margin-bottom:12px;}'
-      +'table.tdata th{background:#f0f0f0;color:#000;border:1px solid #000;padding:7px 8px;font-size:11pt;font-weight:bold;text-align:center;}'
-      +'table.tdata td{border:1px solid #000;padding:6px 8px;font-size:11pt;color:#000;vertical-align:top;}'
-      +'table.tdata tfoot td{background:#e8e8e8;font-weight:bold;}'
-      +'@page{size:210mm 330mm;margin:0;}'
+      /* ── Tabel data (Lampiran I/II/III/IV) dengan garis rapi ── */
+      +'table.tdata{width:100%;border-collapse:collapse;margin-bottom:14px;}'
+      +'table.tdata thead{display:table-header-group;}'
+      +'table.tdata tfoot{display:table-footer-group;}'
+      +'table.tdata th{'
+      +'  background:#f0f0f0;color:#000;border:1.5px solid #000;'
+      +'  padding:8px 10px;font-size:11pt;font-weight:bold;text-align:center;'
+      +'  vertical-align:middle;line-height:1.4;'
+      +'}'
+      +'table.tdata td{'
+      +'  border:1px solid #333;'
+      +'  padding:8px 12px;'
+      +'  font-size:11pt;color:#000;'
+      +'  vertical-align:middle;line-height:1.6;'
+      +'}'
+      +'table.tdata tbody tr{page-break-inside:avoid;break-inside:avoid;}'
+      +'table.tdata tfoot td{background:#e8e8e8;font-weight:bold;padding:8px 12px;border:1px solid #000;}'
       +'@media print{'
       +'  html,body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}'
-      +'  .halaman{margin:0;width:auto;min-height:0;padding:32mm 25mm 28mm 30mm;}'
+      +'  table.tdata thead{display:table-header-group!important;}'
+      +'  table.tdata tfoot{display:table-footer-group!important;}'
+      +'  table.tdata tbody tr{page-break-inside:avoid!important;break-inside:avoid!important;}'
       +'  table.tdata th{background:#f0f0f0!important;}'
       +'  table.tdata tfoot td{background:#e8e8e8!important;}'
       +'}'
       +'</style></head><body>'
       +'<div class="halaman">'+halamanSK+'</div>'
-      +'<div class="halaman">'+halamanLamp1+'</div>'
-      +'<div class="halaman">'+halamanLamp2+'</div>'
-      +'<div class="halaman">'+halamanLamp3+'</div>'
+      +'<div class="lampiran-blok">'+halamanLamp1+'</div>'
+      +'<div class="lampiran-blok">'+halamanLamp2+'</div>'
+      +'<div class="lampiran-blok">'+halamanLamp3+'</div>'
       +halamanLamp4
       +'<script>window.onload=function(){window.focus();setTimeout(function(){window.print();},400);};<\/script>'
       +'</body></html>');
@@ -11181,9 +11199,9 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
     var TDC = {border:'1px solid #000',padding:'6px 8px',fontSize:'11pt',color:'#000',verticalAlign:'middle',textAlign:'center'};
 
     var Kop = function(){
-      return React.createElement('div',{style:{display:'flex',alignItems:'center',borderTop:'1px solid #000',borderBottom:'3px solid #000',padding:'6px 0 10px',marginBottom:18}},
-        React.createElement('div',{style:{width:72,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'flex-start'}},
-          skData.logoKiri && React.createElement('img',{src:skData.logoKiri,style:{maxWidth:72,maxHeight:88,objectFit:'contain',display:'block'}})
+      return React.createElement('div',{style:{display:'flex',alignItems:'center',borderBottom:'3px solid #000',padding:'0 0 8px',marginBottom:18}},
+        React.createElement('div',{style:{width:92,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'flex-start'}},
+          skData.logoKiri && React.createElement('img',{src:skData.logoKiri,style:{maxWidth:92,maxHeight:108,objectFit:'contain',display:'block'}})
         ),
         React.createElement('div',{style:{flex:1,textAlign:'center',padding:'0 8px'}},
           skData.namaYayasan && React.createElement('p',{style:{fontWeight:'bold',fontSize:'11pt',margin:'0 0 1px',letterSpacing:.3}},skData.namaYayasan.toUpperCase()),
@@ -11191,8 +11209,8 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
           skData.alamatInstansi && React.createElement('p',{style:{fontSize:'10pt',margin:'0 0 1px'}},skData.alamatInstansi),
           React.createElement('p',{style:{fontSize:'10pt',margin:0}},[skData.nsm?'NSM: '+skData.nsm:'',skData.npsn?'NPSN: '+skData.npsn:'',skData.telp?'Telp: '+skData.telp:'',skData.email?'Email: '+skData.email:''].filter(Boolean).join('  |  '))
         ),
-        React.createElement('div',{style:{width:72,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'flex-end'}},
-          skData.logoKanan && React.createElement('img',{src:skData.logoKanan,style:{maxWidth:72,maxHeight:88,objectFit:'contain',display:'block'}})
+        React.createElement('div',{style:{width:92,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'flex-end'}},
+          skData.logoKanan && React.createElement('img',{src:skData.logoKanan,style:{maxWidth:92,maxHeight:108,objectFit:'contain',display:'block'}})
         )
       );
     };

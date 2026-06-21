@@ -98,8 +98,63 @@ body{font-family:'Noto Sans',sans-serif;background:var(--bg);color:#e2e2f0;}
 </style>
 </head>
 <body>
-<div id="root">
-  
+<div id="root"></div>
+
+<style>
+#simjas-err-overlay{position:fixed;inset:0;background:#0d0d14;color:#e2e2f0;z-index:99999;display:none;align-items:center;justify-content:center;padding:20px;font-family:'Noto Sans',Arial,sans-serif;}
+#simjas-err-card{background:#161622;border:1px solid #303050;border-radius:16px;padding:24px;max-width:560px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.6);}
+#simjas-err-card h2{color:#f87171;font-size:17px;margin-bottom:8px;}
+#simjas-err-card p{font-size:13px;line-height:1.6;color:#c8c8d8;margin-bottom:10px;}
+#simjas-err-detail{background:#0d0d14;border:1px solid #303050;border-radius:8px;padding:10px;font-size:11px;color:#999;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow-y:auto;margin-bottom:14px;font-family:monospace;}
+#simjas-err-card button{font-family:'Exo 2',sans-serif;font-weight:700;border:none;border-radius:10px;padding:11px 16px;font-size:13px;cursor:pointer;margin-right:8px;margin-top:4px;}
+.simjas-err-reload{background:linear-gradient(135deg,#00c87a,#00a8c4);color:#000;}
+.simjas-err-reset{background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.4)!important;}
+</style>
+<div id="simjas-err-overlay">
+  <div id="simjas-err-card">
+    <h2 id="simjas-err-title">⚠️ Terjadi Kesalahan</h2>
+    <p id="simjas-err-msg">Aplikasi mengalami masalah saat memuat.</p>
+    <div id="simjas-err-detail"></div>
+    <button class="simjas-err-reload" onclick="location.reload()">🔄 Muat Ulang</button>
+    <button class="simjas-err-reset" onclick="if(confirm('Ini akan MENGHAPUS semua data tersimpan di aplikasi ini (kelas, guru, jadwal, dll) dan memuat ulang dari awal. Lanjutkan?')){try{var ks=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k && k.indexOf('sj3_')===0) ks.push(k);} ks.forEach(function(k){localStorage.removeItem(k);});}catch(e){} location.reload();}">🗑️ Reset Data &amp; Muat Ulang</button>
+  </div>
+</div>
+<script>
+(function(){
+  var shown = false;
+  window.__simjasShowError = function(title, msg, detail){
+    if (shown) return;
+    shown = true;
+    try {
+      document.getElementById('simjas-err-title').textContent = title || '⚠️ Terjadi Kesalahan';
+      document.getElementById('simjas-err-msg').textContent = msg || 'Aplikasi mengalami masalah saat memuat.';
+      document.getElementById('simjas-err-detail').textContent = detail || '';
+      document.getElementById('simjas-err-overlay').style.display = 'flex';
+    } catch(e) {}
+  };
+  window.addEventListener('error', function(e){
+    var detail = (e.error && e.error.stack) ? e.error.stack : (e.message + ' (' + e.filename + ':' + e.lineno + ')');
+    window.__simjasShowError('⚠️ Error JavaScript', 'Aplikasi gagal memuat karena ada error. Detail teknis di bawah ini bisa dikirim ke pengembang untuk diperbaiki.', detail);
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    var detail = (e.reason && e.reason.stack) ? e.reason.stack : String(e.reason);
+    window.__simjasShowError('⚠️ Error JavaScript', 'Aplikasi gagal memuat karena ada error (promise rejection).', detail);
+  });
+  // Watchdog: kalau setelah beberapa detik #root masih kosong dan belum ada error tertampil,
+  // kemungkinan besar CDN (React/Tailwind/dll) gagal dimuat karena masalah internet/jaringan.
+  setTimeout(function(){
+    if (shown) return;
+    var root = document.getElementById('root');
+    if (!root || root.children.length === 0) {
+      var libStatus = 'React: ' + (typeof React === 'undefined' ? 'GAGAL DIMUAT' : 'OK') +
+        '\nReactDOM: ' + (typeof ReactDOM === 'undefined' ? 'GAGAL DIMUAT' : 'OK') +
+        '\nXLSX: ' + (typeof XLSX === 'undefined' ? 'GAGAL DIMUAT' : 'OK');
+      window.__simjasShowError('⚠️ Gagal Memuat Aplikasi', 'Aplikasi tidak bisa tampil, kemungkinan karena koneksi internet bermasalah atau ada library yang gagal dimuat dari CDN. Pastikan perangkat terhubung internet, lalu muat ulang.', libStatus);
+    }
+  }, 6000);
+})();
+</script>
+
 <script>function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
 var _excluded = ["_step"];
 function _objectWithoutProperties(e, t) { if (null == e) return {}; var o, r, i = _objectWithoutPropertiesLoose(e, t); if (Object.getOwnPropertySymbols) { var n = Object.getOwnPropertySymbols(e); for (r = 0; r < n.length; r++) o = n[r], -1 === t.indexOf(o) && {}.propertyIsEnumerable.call(e, o) && (i[o] = e[o]); } return i; }
@@ -2183,7 +2238,8 @@ var TugasMengajar = memo(function (_ref6) {
     }
     var jpInput = parseInt(fJp) || 2;
     if (jpInput < 2) {
-      alert('PERINGATAN: Sesuai ketentuan operasional, Minimal harus 2 JP untuk mencegah slot pecahan 1 JP tersisa. Harap naikkan jumlah JP.');
+      alert('\u26D4 DILARANG KERAS: Minimal JP adalah 2!\n\nJP sebesar ' + (parseInt(fJp) || 0) + ' tidak diperbolehkan.\nSistem menolak penyimpanan ini untuk mencegah slot jadwal pecahan 1 JP.\n\nNaikkan JP minimal menjadi 2.');
+      setFJp(2);
       return;
     }
     var base = {
@@ -2201,7 +2257,9 @@ var TugasMengajar = memo(function (_ref6) {
       if (assignments.find(function (a) {
         return a.kelasId === tgts[0] && a.mapelId === fMapel && a.id !== editId;
       })) {
-        alert("Pelajaran sudah terdaftar di kelas ini. Duplikasi dilarang.");
+        var namaMapelEdit = (mapel.find(function(m){ return m.id === fMapel; }) || {}).nama || 'Pelajaran ini';
+        var namaKelasEdit = (kelas.find(function(k){ return k.id === tgts[0]; }) || {}).nama || 'kelas ini';
+        alert('\u26D4 GAGAL PERBARUI \u2014 DUPLIKASI DILARANG!\n\n"' + namaMapelEdit + '" sudah ada di ' + namaKelasEdit + '.\n\nSatu pelajaran hanya boleh ada SATU kali per kelas.\nHapus data lama dulu jika ingin mengubah pengaturannya.');
         return;
       }
       setAssignments(function (p) {
@@ -2224,8 +2282,9 @@ var TugasMengajar = memo(function (_ref6) {
           return k.id === t;
         })) === null || _kelas$find === void 0 ? void 0 : _kelas$find.nama);
       });
+      var namaMapelDuplikat = (mapel.find(function(m){ return m.id === fMapel; }) || {}).nama || 'Pelajaran ini';
       if (dups.length > 0) {
-        alert("GAGAL DISIMPAN: Pelajaran sudah terdaftar di kelas:\n- ".concat(dups.join('\n- '), "\nData yang sama dilarang."));
+        alert('\u26D4 GAGAL DISIMPAN \u2014 DUPLIKASI DILARANG!\n\n"' + namaMapelDuplikat + '" sudah terdaftar di kelas berikut:\n\u2022 ' + dups.join('\n\u2022 ') + '\n\nSatu pelajaran hanya boleh ada SATU kali per kelas.\nHapus data lama dulu jika ingin mengubah JP-nya.');
         return;
       }
       setAssignments(function (p) {
@@ -2440,7 +2499,17 @@ var TugasMengajar = memo(function (_ref6) {
     max: "24",
     value: fJp,
     onChange: function onChange(e) {
-      return setFJp(e.target.value);
+      var val = parseInt(e.target.value) || 2;
+      if (val < 2) {
+        alert('\u26D4 DILARANG: JP minimal adalah 2!\n\nMemasukkan 1 JP dilarang keras karena menyebabkan slot pecahan yang tidak bisa dijadwalkan.\n\nNilai otomatis dikoreksi ke 2 JP.');
+        setFJp(2);
+      } else {
+        setFJp(val);
+      }
+    },
+    onBlur: function onBlur(e) {
+      var val = parseInt(e.target.value) || 2;
+      if (val < 2) setFJp(2);
     },
     style: inp2
   }))), /*#__PURE__*/React.createElement("div", {
@@ -5909,6 +5978,27 @@ var GridJadwal = memo(function (_ref1) {
       });
     }); // hanya guru yg punya assignment
 
+    // Urutkan guru: WALI KELAS dulu (urut Kelas 1A, 1B, ... 6A, 6B berdasarkan kelas yang diwalikan),
+    // baru kemudian GURU MAPEL (Penjaskes, Bahasa Inggris, dll) diurutkan berdasarkan nama
+    var parseKelasUrutGuru = function parseKelasUrutGuru(nama) {
+      var m = (nama || '').match(/(\d+)\s*([A-Za-z]*)/);
+      return m ? [parseInt(m[1]) || 0, (m[2] || '').toUpperCase()] : [999, nama || ''];
+    };
+    var waliKelasOf = function waliKelasOf(g) {
+      return kelas.find(function (k) { return k.waliKelasId === g.id; }) || null;
+    };
+    targetGuru = targetGuru.slice().sort(function (g1, g2) {
+      var w1 = waliKelasOf(g1), w2 = waliKelasOf(g2);
+      var cat1 = w1 ? 0 : 1, cat2 = w2 ? 0 : 1;
+      if (cat1 !== cat2) return cat1 - cat2;
+      if (cat1 === 0) {
+        var k1 = parseKelasUrutGuru(w1.nama), k2 = parseKelasUrutGuru(w2.nama);
+        if (k1[0] !== k2[0]) return k1[0] - k2[0];
+        if (k1[1] !== k2[1]) return k1[1] < k2[1] ? -1 : 1;
+      }
+      return (g1.nama || '').localeCompare(g2.nama || '');
+    });
+
     if (targetGuru.length === 0) {
       alert('Tidak ada guru dengan jadwal mengajar.');
       return;
@@ -5960,11 +6050,11 @@ var GridJadwal = memo(function (_ref1) {
     // Kumpulkan halaman yang valid dulu (skip guru tanpa JP)
     var pages = [];
     targetGuru.forEach(function (g) {
-      var guruKelas = assignments.filter(function (a) {
+      var guruKelas = _toConsumableArray(new Set(assignments.filter(function (a) {
         return a.guruId === g.id;
       }).map(function (a) {
         return a.kelasId;
-      }).sort(function(aId, bId) {
+      }))).sort(function(aId, bId) {
         var parseK = function(id) {
           var k = kelas.find(function(x){ return x.id === id; });
           var nama = k ? k.nama : id;
@@ -6070,15 +6160,15 @@ var GridJadwal = memo(function (_ref1) {
         totalJpMinggu = _ref10.totalJpMinggu,
         rows = _ref10.rows;
       var isLast = pi === pages.length - 1;
-      pagesHtml += "\n        <div class=\"page\" style=\"".concat(isLast ? 'break-after:auto;page-break-after:auto;' : 'break-after:page;page-break-after:always;', "\">\n          <div class=\"page-header\">\n            <div class=\"school-name\">").concat(akademik.namaSekolah.toUpperCase(), "</div>\n            <div class=\"doc-title\">JADWAL MENGAJAR GURU</div>\n            <div class=\"guru-badge\">\n              <span class=\"guru-icon\">\uD83D\uDC64</span>\n              <span>").concat(g.nama.toUpperCase(), "</span>\n            </div>\n            <div class=\"guru-meta\">\n              <div class=\"meta-row\">\n                <span>Tahun Ajaran: <strong>").concat(akademik.tahunAjaran || '—', "</strong></span>\n                <span>Semester: <strong>").concat(akademik.semester ? akademik.semester.toUpperCase() : '—', "</strong></span>\n                <span>Total JP/Minggu: <strong>").concat(totalJpMinggu, " JP</strong></span>\n              </div>\n              <div class=\"mapel-tags\">\n                <span class=\"tag-label\">Mata Pelajaran:</span>\n                ").concat(mapelGuru.map(function (mid) {
+      pagesHtml += "\n        <div class=\"page\" style=\"".concat(isLast ? 'break-after:auto;page-break-after:auto;' : 'break-after:page;page-break-after:always;', "\">\n          <div class=\"page-fit\">\n          <div class=\"page-header\">\n            <div class=\"school-name\">").concat(akademik.namaSekolah.toUpperCase(), "</div>\n            <div class=\"doc-title\">JADWAL MENGAJAR GURU</div>\n            <div class=\"guru-badge\">\n              <span class=\"guru-icon\">\uD83D\uDC64</span>\n              <span>").concat(g.nama.toUpperCase(), "</span>\n            </div>\n            <div class=\"guru-meta\">\n              <div class=\"meta-row\">\n                <span>Tahun Ajaran: <strong>").concat(akademik.tahunAjaran || '—', "</strong></span>\n                <span>Semester: <strong>").concat(akademik.semester ? akademik.semester.toUpperCase() : '—', "</strong></span>\n                <span>Total JP/Minggu: <strong>").concat(totalJpMinggu, " JP</strong></span>\n              </div>\n              <div class=\"mapel-tags\">\n                <span class=\"tag-label\">Mata Pelajaran:</span>\n                ").concat(mapelGuru.map(function (mid) {
         return "<span class=\"mapel-tag\">".concat(mNm(mid), "</span>");
       }).join(''), "\n              </div>\n              <div class=\"mapel-tags\" style=\"margin-top:4px\">\n                <span class=\"tag-label\">Mengajar di Kelas:</span>\n                ").concat(guruKelas.map(function (kid) {
         return "<span class=\"kelas-tag\">".concat(kNm(kid), "</span>");
       }).join(''), "\n              </div>\n            </div>\n          </div>\n          <table>\n            <thead><tr><th class=\"th-jp\">JP</th>").concat(hariCetak.map(function (h) {
         return "<th>".concat(h, "</th>");
-      }).join(''), "</tr></thead>\n            <tbody>").concat(rows, "</tbody>\n          </table>\n          <div class=\"page-footer\">\n            <span>Dicetak: ").concat(tglCetak, "</span>\n            <span>SIMJAS PRO v3.7</span>\n            <span>Halaman ").concat(pi + 1, " dari ").concat(pages.length, "</span>\n          </div>\n        </div>");
+      }).join(''), "</tr></thead>\n            <tbody>").concat(rows, "</tbody>\n          </table>\n          <div class=\"page-footer\">\n            <span>Dicetak: ").concat(tglCetak, "</span>\n            <span>SIMJAS PRO v3.7</span>\n            <span>Halaman ").concat(pi + 1, " dari ").concat(pages.length, "</span>\n          </div>\n          </div>\n        </div>");
     });
-    var html = "<!DOCTYPE html>\n<html lang=\"id\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Jadwal Mengajar Guru \u2014 ".concat(akademik.namaSekolah, "</title>\n<style>\n  @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@700;800;900&family=Noto+Sans:wght@400;500;600;700&display=swap');\n  * { box-sizing: border-box; margin: 0; padding: 0; }\n  html, body { background: #fff; color: #000; font-family: 'Noto Sans', sans-serif; }\n\n  .page {\n    width: 100%;\n    padding: 12mm 12mm 8mm;\n    display: flex;\n    flex-direction: column;\n    gap: 8px;\n  }\n  .last-page { break-after: auto; page-break-after: auto; }\n\n  /* HEADER */\n  .page-header {\n    text-align: center;\n    border-bottom: 3px double #000;\n    padding-bottom: 8px;\n    margin-bottom: 6px;\n  }\n  .school-name {\n    font-family: 'Exo 2', sans-serif;\n    font-size: 15pt;\n    font-weight: 900;\n    letter-spacing: 1.5px;\n    line-height: 1.2;\n  }\n  .doc-title {\n    font-family: 'Exo 2', sans-serif;\n    font-size: 10pt;\n    font-weight: 700;\n    color: #444;\n    letter-spacing: 3px;\n    margin-top: 2px;\n  }\n  .guru-badge {\n    display: inline-flex;\n    align-items: center;\n    gap: 8px;\n    font-family: 'Exo 2', sans-serif;\n    font-size: 18pt;\n    font-weight: 900;\n    border: 3px solid #000;\n    border-radius: 8px;\n    padding: 4px 20px;\n    margin: 6px 0 5px;\n    letter-spacing: 1px;\n    background: #f8f8f8;\n  }\n  .guru-icon { font-size: 16pt; }\n  .guru-meta { margin-top: 4px; }\n  .meta-row {\n    display: flex;\n    justify-content: center;\n    flex-wrap: wrap;\n    gap: 0 20px;\n    font-size: 8.5pt;\n    color: #333;\n    margin-bottom: 5px;\n  }\n  .meta-row strong { color: #000; }\n  .mapel-tags {\n    display: flex;\n    justify-content: center;\n    flex-wrap: wrap;\n    gap: 4px;\n    align-items: center;\n  }\n  .tag-label { font-size: 8pt; color: #666; font-weight: 600; margin-right: 2px; }\n  .mapel-tag {\n    font-size: 8pt;\n    font-weight: 700;\n    background: #e8f4fd;\n    border: 1px solid #aad4f5;\n    border-radius: 4px;\n    padding: 1px 7px;\n    color: #1a5276;\n  }\n  .kelas-tag {\n    font-size: 8pt;\n    font-weight: 700;\n    background: #eafaf1;\n    border: 1px solid #a9dfbf;\n    border-radius: 4px;\n    padding: 1px 7px;\n    color: #1e8449;\n  }\n\n  /* TABLE */\n  table {\n    width: 100%;\n    border-collapse: collapse;\n    flex: 1;\n    table-layout: fixed;\n  }\n  th, td {\n    border: 1.2px solid #000;\n    vertical-align: middle;\n    text-align: center;\n    word-break: break-word;\n  }\n  thead tr { background: #1a1a1a; }\n  th {\n    font-family: 'Exo 2', sans-serif;\n    font-size: 10pt;\n    font-weight: 900;\n    color: #fff;\n    padding: 7px 4px;\n    letter-spacing: 0.5px;\n  }\n  th.th-jp { width: 52px; background: #111; }\n\n  tbody tr:nth-child(odd)  { background: #f8f8f8; }\n  tbody tr:nth-child(even) { background: #fff; }\n\n  .td-jp {\n    background: #111 !important;\n    padding: 5px 3px;\n  }\n  .jp-num {\n    font-family: 'Exo 2', sans-serif;\n    font-size: 10pt;\n    font-weight: 900;\n    color: #fff;\n  }\n  .td-empty { background: #fff !important; }\n  .td-upacara {\n    background: #fff0f0 !important;\n    font-family: 'Exo 2', sans-serif;\n    font-size: 7.5pt;\n    font-weight: 900;\n    color: #c00;\n    padding: 3px;\n  }\n  .td-mapel { padding: 4px 5px; }\n  .kls-badge {\n    display: inline-block;\n    font-family: 'Exo 2', sans-serif;\n    font-size: 8pt;\n    font-weight: 900;\n    background: #1a1a1a;\n    color: #fff;\n    border-radius: 4px;\n    padding: 1px 6px;\n    margin-bottom: 3px;\n  }\n  .mn {\n    display: block;\n    font-family: 'Exo 2', sans-serif;\n    font-size: 9pt;\n    font-weight: 900;\n    color: #000;\n    line-height: 1.3;\n    margin-bottom: 2px;\n  }\n  .wkt {\n    display: block;\n    font-size: 7pt;\n    color: #666;\n    font-weight: 600;\n  }\n\n  /* FOOTER */\n  .page-footer {\n    display: flex;\n    justify-content: space-between;\n    font-size: 7.5pt;\n    color: #666;\n    border-top: 1px solid #ccc;\n    padding-top: 5px;\n    margin-top: 4px;\n  }\n\n  @media print {\n    @page { size: landscape; margin: 8mm; }\n    body { background: #fff !important; }\n    .page { padding: 0; }\n  }\n</style>\n</head>\n<body>\n").concat(pagesHtml, "\n<script>\n  window.onload = function() { window.focus(); window.print(); };\n<\/script>\n</body>\n</html>");
+    var html = "<!DOCTYPE html>\n<html lang=\"id\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Jadwal Mengajar Guru \u2014 ".concat(akademik.namaSekolah, "</title>\n<style>\n  @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@700;800;900&family=Noto+Sans:wght@400;500;600;700&display=swap');\n  * { box-sizing: border-box; margin: 0; padding: 0; }\n  html, body { background: #fff; color: #000; font-family: 'Noto Sans', sans-serif; }\n\n  .page {\n    width: 100%;\n    height: 190mm;\n    box-sizing: border-box;\n    overflow: hidden;\n    position: relative;\n  }\n  .page-fit {\n    width: 100%;\n    padding: 10mm 12mm 6mm;\n    box-sizing: border-box;\n    display: flex;\n    flex-direction: column;\n    gap: 8px;\n    transform-origin: top center;\n  }\n  .last-page { break-after: auto; page-break-after: auto; }\n\n  /* HEADER */\n  .page-header {\n    text-align: center;\n    border-bottom: 3px double #000;\n    padding-bottom: 8px;\n    margin-bottom: 6px;\n  }\n  .school-name {\n    font-family: 'Exo 2', sans-serif;\n    font-size: 15pt;\n    font-weight: 900;\n    letter-spacing: 1.5px;\n    line-height: 1.2;\n  }\n  .doc-title {\n    font-family: 'Exo 2', sans-serif;\n    font-size: 10pt;\n    font-weight: 700;\n    color: #444;\n    letter-spacing: 3px;\n    margin-top: 2px;\n  }\n  .guru-badge {\n    display: inline-flex;\n    align-items: center;\n    gap: 8px;\n    font-family: 'Exo 2', sans-serif;\n    font-size: 18pt;\n    font-weight: 900;\n    border: 3px solid #000;\n    border-radius: 8px;\n    padding: 4px 20px;\n    margin: 6px 0 5px;\n    letter-spacing: 1px;\n    background: #f8f8f8;\n  }\n  .guru-icon { font-size: 16pt; }\n  .guru-meta { margin-top: 4px; }\n  .meta-row {\n    display: flex;\n    justify-content: center;\n    flex-wrap: wrap;\n    gap: 0 20px;\n    font-size: 8.5pt;\n    color: #333;\n    margin-bottom: 5px;\n  }\n  .meta-row strong { color: #000; }\n  .mapel-tags {\n    display: flex;\n    justify-content: center;\n    flex-wrap: wrap;\n    gap: 4px;\n    align-items: center;\n  }\n  .tag-label { font-size: 8pt; color: #666; font-weight: 600; margin-right: 2px; }\n  .mapel-tag {\n    font-size: 8pt;\n    font-weight: 700;\n    background: #e8f4fd;\n    border: 1px solid #aad4f5;\n    border-radius: 4px;\n    padding: 1px 7px;\n    color: #1a5276;\n  }\n  .kelas-tag {\n    font-size: 8pt;\n    font-weight: 700;\n    background: #eafaf1;\n    border: 1px solid #a9dfbf;\n    border-radius: 4px;\n    padding: 1px 7px;\n    color: #1e8449;\n  }\n\n  /* TABLE */\n  table {\n    width: 100%;\n    border-collapse: collapse;\n    flex: 1;\n    table-layout: fixed;\n  }\n  th, td {\n    border: 1.2px solid #000;\n    vertical-align: middle;\n    text-align: center;\n    word-break: break-word;\n  }\n  thead tr { background: #1a1a1a; }\n  th {\n    font-family: 'Exo 2', sans-serif;\n    font-size: 10pt;\n    font-weight: 900;\n    color: #fff;\n    padding: 7px 4px;\n    letter-spacing: 0.5px;\n  }\n  th.th-jp { width: 52px; background: #111; }\n\n  tbody tr:nth-child(odd)  { background: #f8f8f8; }\n  tbody tr:nth-child(even) { background: #fff; }\n\n  .td-jp {\n    background: #111 !important;\n    padding: 5px 3px;\n  }\n  .jp-num {\n    font-family: 'Exo 2', sans-serif;\n    font-size: 10pt;\n    font-weight: 900;\n    color: #fff;\n  }\n  .td-empty { background: #fff !important; }\n  .td-upacara {\n    background: #fff0f0 !important;\n    font-family: 'Exo 2', sans-serif;\n    font-size: 7.5pt;\n    font-weight: 900;\n    color: #c00;\n    padding: 3px;\n  }\n  .td-mapel { padding: 4px 5px; }\n  .kls-badge {\n    display: inline-block;\n    font-family: 'Exo 2', sans-serif;\n    font-size: 8pt;\n    font-weight: 900;\n    background: #1a1a1a;\n    color: #fff;\n    border-radius: 4px;\n    padding: 1px 6px;\n    margin-bottom: 3px;\n  }\n  .mn {\n    display: block;\n    font-family: 'Exo 2', sans-serif;\n    font-size: 9pt;\n    font-weight: 900;\n    color: #000;\n    line-height: 1.3;\n    margin-bottom: 2px;\n  }\n  .wkt {\n    display: block;\n    font-size: 7pt;\n    color: #666;\n    font-weight: 600;\n  }\n\n  /* FOOTER */\n  .page-footer {\n    display: flex;\n    justify-content: space-between;\n    font-size: 7.5pt;\n    color: #666;\n    border-top: 1px solid #ccc;\n    padding-top: 5px;\n    margin-top: 4px;\n  }\n\n  @media print {\n    @page { size: landscape; margin: 8mm; }\n    body { background: #fff !important; }\n  }\n</style>\n</head>\n<body>\n").concat(pagesHtml, "\n<script>\n  function fitPages() {\n    document.querySelectorAll('.page').forEach(function(p) {\n      var f = p.querySelector('.page-fit');\n      if (!f) return;\n      f.style.transform = 'none';\n      var avail = p.clientHeight;\n      var actual = f.scrollHeight;\n      if (avail > 0 && actual > avail) {\n        var s = avail / actual;\n        f.style.transform = 'scale(' + s + ')';\n      }\n    });\n  }\n  function go() {\n    fitPages();\n    window.focus();\n    window.print();\n  }\n  if (document.fonts && document.fonts.ready) {\n    document.fonts.ready.then(function(){ setTimeout(go, 60); }).catch(go);\n  } else {\n    window.onload = go;\n  }\n<\/script>\n</body>\n</html>");
     var win = window.open('', '_blank', 'width=1100,height=800,scrollbars=yes');
     if (!win) {
       alert('Pop-up diblokir browser. Izinkan pop-up untuk halaman ini lalu coba lagi.');
@@ -11923,6 +12013,389 @@ var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
   );
 };
 
+// ══════════════════════════════════════════════════════════
+// CARI SLOT KOSONG GURU
+// ══════════════════════════════════════════════════════════
+var CariSlotKosong = function CariSlotKosong(_ref_csk) {
+  var guru = _ref_csk.guru,
+    kelas = _ref_csk.kelas,
+    jadwal = _ref_csk.jadwal,
+    slotConfig = _ref_csk.slotConfig,
+    guruOffDays = _ref_csk.guruOffDays,
+    assignments = _ref_csk.assignments,
+    mapel = _ref_csk.mapel,
+    setTab = _ref_csk.setTab;
+
+  var HARI_AKTIF = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+  var JP_MAX = 10;
+
+  var _useState_csk1 = useState(''), _useState_csk2 = _slicedToArray(_useState_csk1, 2),
+    selectedGuru = _useState_csk2[0], setSelectedGuru = _useState_csk2[1];
+  var _useState_csk3 = useState('semua'), _useState_csk4 = _slicedToArray(_useState_csk3, 2),
+    filterHari = _useState_csk4[0], setFilterHari = _useState_csk4[1];
+  var _useState_csk5 = useState(false), _useState_csk6 = _slicedToArray(_useState_csk5, 2),
+    showOffdays = _useState_csk6[0], setShowOffdays = _useState_csk6[1];
+  var _useState_csk7 = useState(''), _useState_csk8 = _slicedToArray(_useState_csk7, 2),
+    searchGuru = _useState_csk8[0], setSearchGuru = _useState_csk8[1];
+
+  var jadwalAda = jadwal && Object.keys(jadwal).length > 0;
+
+  // Hitung slot sibuk guru terpilih dari semua kelas
+  var hitungSlotGuru = function(guruId) {
+    var sibuk = {}; // sibuk[hari][jp] = {kelasNama, mapelNama}
+    HARI_AKTIF.forEach(function(h) { sibuk[h] = {}; });
+
+    if (!guruId) return sibuk;
+
+    kelas.forEach(function(k) {
+      HARI_AKTIF.forEach(function(h) {
+        for (var j = 1; j <= JP_MAX; j++) {
+          var cell = jadwal[k.id] && jadwal[k.id][h] && jadwal[k.id][h][j];
+          if (cell && !cell.isUpacara && cell.guruId === guruId) {
+            if (!sibuk[h][j]) sibuk[h][j] = [];
+            var mp = mapel.find(function(m){ return m.id === cell.mapelId; });
+            sibuk[h][j].push({ kelasNama: k.nama, mapelNama: mp ? mp.nama : '?' });
+          }
+        }
+      });
+    });
+    return sibuk;
+  };
+
+  // Hitung slot aktif (ada di slotConfig setidaknya 1 kelas)
+  var getSlotAktif = function() {
+    var aktif = {};
+    HARI_AKTIF.forEach(function(h) { aktif[h] = {}; });
+    kelas.forEach(function(k) {
+      HARI_AKTIF.forEach(function(h) {
+        for (var j = 1; j <= JP_MAX; j++) {
+          if (slotConfig && slotConfig[k.id] && slotConfig[k.id][h] && slotConfig[k.id][h][j]) {
+            aktif[h][j] = true;
+          }
+        }
+      });
+    });
+    return aktif;
+  };
+
+  // Off days guru terpilih
+  var getOffDays = function(guruId) {
+    if (!guruOffDays || !guruId) return [];
+    var raw = guruOffDays[guruId];
+    if (!raw) return [];
+    // guruOffDays[guruId] disimpan sebagai objek peta hari -> boolean
+    // (format yang dipakai di seluruh aplikasi, mis. guruOffDays[guruId][hari]).
+    // Konversi ke array nama hari di sini supaya .includes/.length/.join di bawah tetap berfungsi.
+    if (Array.isArray(raw)) return raw;
+    return Object.keys(raw).filter(function (h) { return raw[h]; });
+  };
+
+  // Hitung total slot kosong per guru (untuk list)
+  var hitungKosongPerGuru = function(guruId) {
+    var sibuk = hitungSlotGuru(guruId);
+    var aktif = getSlotAktif();
+    var offdays = getOffDays(guruId);
+    var total = 0;
+    HARI_AKTIF.forEach(function(h) {
+      if (offdays.includes(h)) return;
+      Object.keys(aktif[h]).forEach(function(j) {
+        if (!sibuk[h][j]) total++;
+      });
+    });
+    return total;
+  };
+
+  var guruFiltered = guru.filter(function(g) {
+    return !searchGuru || g.nama.toLowerCase().includes(searchGuru.toLowerCase());
+  });
+
+  var selectedGuruObj = guru.find(function(g){ return g.id === selectedGuru; });
+  var slotSibuk = selectedGuru ? hitungSlotGuru(selectedGuru) : {};
+  var slotAktif = getSlotAktif();
+  var offdays = getOffDays(selectedGuru);
+
+  // Temukan max JP aktif untuk render kolom
+  var maxJPAktif = 0;
+  HARI_AKTIF.forEach(function(h) {
+    Object.keys(slotAktif[h]).forEach(function(j) {
+      if (parseInt(j) > maxJPAktif) maxJPAktif = parseInt(j);
+    });
+  });
+  if (maxJPAktif === 0) maxJPAktif = JP_MAX;
+
+  var hariTampil = filterHari === 'semua' ? HARI_AKTIF : [filterHari];
+
+  // Hitung ringkasan
+  var totalKosong = 0, totalSibuk = 0, totalLibur = 0;
+  if (selectedGuru) {
+    HARI_AKTIF.forEach(function(h) {
+      if (offdays.includes(h)) {
+        Object.keys(slotAktif[h]).forEach(function() { totalLibur++; });
+        return;
+      }
+      Object.keys(slotAktif[h]).forEach(function(j) {
+        if (slotSibuk[h] && slotSibuk[h][j]) totalSibuk++;
+        else totalKosong++;
+      });
+    });
+  }
+
+  // Warna JP cell
+  var getCellStyle = function(h, j) {
+    var isOff = offdays.includes(h);
+    var isSibuk = slotSibuk[h] && slotSibuk[h][j];
+    var isAktif = slotAktif[h] && slotAktif[h][j];
+
+    if (!isAktif) return {
+      background: 'transparent', border: '1px solid #1a1a28',
+      borderRadius: 6, padding: '6px 4px', textAlign: 'center', minHeight: 36,
+      opacity: 0.3
+    };
+    if (isOff) return {
+      background: 'rgba(100,100,120,.1)', border: '1px dashed #333',
+      borderRadius: 6, padding: '6px 4px', textAlign: 'center', minHeight: 36
+    };
+    if (isSibuk) return {
+      background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.35)',
+      borderRadius: 6, padding: '6px 4px', textAlign: 'center', minHeight: 36
+    };
+    return {
+      background: 'rgba(0,229,160,.1)', border: '1px solid rgba(0,229,160,.4)',
+      borderRadius: 6, padding: '6px 4px', textAlign: 'center', minHeight: 36,
+      boxShadow: '0 0 8px rgba(0,229,160,.08)'
+    };
+  };
+
+  return React.createElement('div', { style:{ padding:'0 0 60px', fontFamily:"'Exo 2',sans-serif" } },
+
+    // ── Header ──
+    React.createElement('div', { style:{ marginBottom:20, display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' } },
+      React.createElement('div', { style:{ flex:1, minWidth:200 } },
+        React.createElement('h2', { style:{ fontSize:18, fontWeight:900, color:'#fff', margin:0 } },
+          React.createElement('i', { className:'fas fa-search', style:{ color:'#00b8d4', marginRight:10 } }),
+          'CARI SLOT KOSONG GURU'
+        ),
+        React.createElement('p', { style:{ fontSize:11, color:'#555', marginTop:4 } },
+          'Temukan kapan guru tersedia untuk dijadwalkan atau ditugaskan kegiatan tambahan'
+        )
+      )
+    ),
+
+    // ── Layout: sidebar guru + konten utama ──
+    React.createElement('div', { style:{ display:'flex', gap:16, flexWrap:'wrap' } },
+
+      // ── Sidebar daftar guru ──
+      React.createElement('div', { style:{ width:220, flexShrink:0 } },
+        // Search guru
+        React.createElement('div', { style:{ position:'relative', marginBottom:10 } },
+          React.createElement('i', { className:'fas fa-search', style:{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'#444', fontSize:11 } }),
+          React.createElement('input', {
+            type:'text', placeholder:'Cari nama guru...', value: searchGuru,
+            onChange: function(e){ setSearchGuru(e.target.value); },
+            style:{ width:'100%', background:'#161622', border:'1px solid #252535', borderRadius:8, padding:'8px 10px 8px 30px', color:'#e2e2f0', fontSize:12, outline:'none' }
+          })
+        ),
+
+        // List guru
+        React.createElement('div', { style:{ display:'flex', flexDirection:'column', gap:4, maxHeight:540, overflowY:'auto' } },
+          guruFiltered.length === 0
+            ? React.createElement('div', { style:{ textAlign:'center', color:'#444', fontSize:12, padding:20 } }, 'Guru tidak ditemukan')
+            : guruFiltered.map(function(g) {
+                var kosong = jadwalAda ? hitungKosongPerGuru(g.id) : '—';
+                var isSelected = selectedGuru === g.id;
+                return React.createElement('button', {
+                  key: g.id,
+                  onClick: function(){ setSelectedGuru(g.id); setFilterHari('semua'); },
+                  style:{
+                    background: isSelected ? 'linear-gradient(135deg,rgba(0,229,160,.12),rgba(0,184,212,.08))' : '#161622',
+                    border: isSelected ? '1px solid rgba(0,229,160,.4)' : '1px solid #252535',
+                    borderRadius: 8, padding:'10px 12px', cursor:'pointer', transition:'all .15s',
+                    textAlign:'left', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8
+                  }
+                },
+                  React.createElement('div', { style:{ display:'flex', alignItems:'center', gap:8, minWidth:0 } },
+                    React.createElement('div', { style:{ width:28, height:28, borderRadius:'50%', background: isSelected ? 'linear-gradient(135deg,#00e5a0,#00b8d4)' : '#252535', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 } },
+                      React.createElement('i', { className:'fas fa-user', style:{ fontSize:11, color: isSelected ? '#000' : '#555' } })
+                    ),
+                    React.createElement('span', { style:{ fontSize:11, fontWeight:700, color: isSelected ? '#00e5a0' : '#aaa', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' } }, g.nama)
+                  ),
+                  jadwalAda && React.createElement('span', { style:{ fontSize:10, fontWeight:900, color: kosong > 0 ? '#00e5a0' : '#555', background: kosong > 0 ? 'rgba(0,229,160,.12)' : 'rgba(0,0,0,.3)', padding:'2px 6px', borderRadius:4, flexShrink:0 } }, kosong)
+                );
+              })
+        )
+      ),
+
+      // ── Konten utama ──
+      React.createElement('div', { style:{ flex:1, minWidth:0 } },
+
+        // Belum pilih guru
+        !selectedGuru && React.createElement('div', { style:{ textAlign:'center', padding:'80px 20px', color:'#444', background:'#161622', borderRadius:12, border:'1px solid #252535' } },
+          React.createElement('i', { className:'fas fa-user-clock', style:{ fontSize:52, color:'#252535', marginBottom:16, display:'block' } }),
+          React.createElement('p', { style:{ fontSize:14, fontWeight:700, color:'#555', marginBottom:8 } }, 'Pilih guru di sebelah kiri'),
+          React.createElement('p', { style:{ fontSize:12, color:'#444' } }, 'Slot berwarna hijau = kosong / tersedia')
+        ),
+
+        // Jadwal belum ada
+        selectedGuru && !jadwalAda && React.createElement('div', { style:{ textAlign:'center', padding:'80px 20px', background:'#161622', borderRadius:12, border:'1px solid #252535' } },
+          React.createElement('i', { className:'fas fa-calendar-times', style:{ fontSize:52, color:'#252535', marginBottom:16, display:'block' } }),
+          React.createElement('p', { style:{ fontSize:14, fontWeight:700, color:'#555', marginBottom:16 } }, 'Jadwal belum dibuat'),
+          React.createElement('button', {
+            onClick: function(){ setTab('generate'); },
+            style:{ background:'linear-gradient(135deg,#00e5a0,#00b8d4)', color:'#000', border:'none', padding:'10px 20px', borderRadius:8, fontSize:12, fontWeight:800, cursor:'pointer' }
+          }, React.createElement('i', { className:'fas fa-robot', style:{ marginRight:6 } }), 'Auto Generate Jadwal')
+        ),
+
+        // Hasil slot kosong
+        selectedGuru && jadwalAda && React.createElement('div', null,
+
+          // Ringkasan & nama guru
+          React.createElement('div', { style:{ background:'#161622', border:'1px solid #252535', borderRadius:12, padding:'14px 16px', marginBottom:14 } },
+            React.createElement('div', { style:{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 } },
+              React.createElement('div', null,
+                React.createElement('p', { style:{ fontSize:13, fontWeight:900, color:'#fff', marginBottom:4 } },
+                  React.createElement('i', { className:'fas fa-user-tie', style:{ color:'#00e5a0', marginRight:8 } }),
+                  selectedGuruObj ? selectedGuruObj.nama : '—'
+                ),
+                React.createElement('p', { style:{ fontSize:11, color:'#555' } }, 'Slot aktif yang dianalisis berdasarkan konfigurasi ketersediaan jam')
+              ),
+              React.createElement('div', { style:{ display:'flex', gap:10 } },
+                React.createElement('div', { style:{ textAlign:'center', background:'rgba(0,229,160,.08)', border:'1px solid rgba(0,229,160,.2)', borderRadius:8, padding:'8px 14px' } },
+                  React.createElement('div', { style:{ fontSize:18, fontWeight:900, color:'#00e5a0' } }, totalKosong),
+                  React.createElement('div', { style:{ fontSize:9, color:'#555', fontWeight:700, letterSpacing:1 } }, 'KOSONG')
+                ),
+                React.createElement('div', { style:{ textAlign:'center', background:'rgba(239,68,68,.08)', border:'1px solid rgba(239,68,68,.2)', borderRadius:8, padding:'8px 14px' } },
+                  React.createElement('div', { style:{ fontSize:18, fontWeight:900, color:'#f87171' } }, totalSibuk),
+                  React.createElement('div', { style:{ fontSize:9, color:'#555', fontWeight:700, letterSpacing:1 } }, 'MENGAJAR')
+                ),
+                totalLibur > 0 && React.createElement('div', { style:{ textAlign:'center', background:'rgba(245,158,11,.08)', border:'1px solid rgba(245,158,11,.2)', borderRadius:8, padding:'8px 14px' } },
+                  React.createElement('div', { style:{ fontSize:18, fontWeight:900, color:'#f59e0b' } }, totalLibur),
+                  React.createElement('div', { style:{ fontSize:9, color:'#555', fontWeight:700, letterSpacing:1 } }, 'LIBUR')
+                )
+              )
+            )
+          ),
+
+          // Filter hari
+          React.createElement('div', { style:{ display:'flex', gap:6, marginBottom:14, flexWrap:'wrap' } },
+            ['semua'].concat(HARI_AKTIF).map(function(h) {
+              var isAkt = h === 'semua' || Object.keys(slotAktif[h]||{}).length > 0;
+              var isActive = filterHari === h;
+              // hitung kosong per hari
+              var cntKosong = 0;
+              if (h !== 'semua' && !offdays.includes(h)) {
+                Object.keys(slotAktif[h]||{}).forEach(function(jj) {
+                  if (!(slotSibuk[h] && slotSibuk[h][jj])) cntKosong++;
+                });
+              } else if (h === 'semua') {
+                cntKosong = totalKosong;
+              }
+              return React.createElement('button', {
+                key: h, onClick: function(){ setFilterHari(h); },
+                disabled: !isAkt,
+                style:{
+                  background: isActive ? 'rgba(0,184,212,.15)' : '#161622',
+                  color: !isAkt ? '#333' : (isActive ? '#00b8d4' : '#666'),
+                  border: isActive ? '1px solid #00b8d4' : '1px solid #252535',
+                  borderRadius:6, padding:'5px 12px', fontSize:10, fontWeight:700, cursor: isAkt ? 'pointer':'not-allowed',
+                  display:'flex', alignItems:'center', gap:5
+                }
+              },
+                h === 'semua' ? 'Semua Hari' : h,
+                React.createElement('span', { style:{ background: cntKosong>0 ? 'rgba(0,229,160,.2)':'rgba(0,0,0,.3)', color: cntKosong>0?'#00e5a0':'#444', padding:'1px 5px', borderRadius:4, fontSize:9 } }, cntKosong)
+              );
+            })
+          ),
+
+          // Toggle offdays info
+          offdays.length > 0 && React.createElement('div', {
+            onClick: function(){ setShowOffdays(!showOffdays); },
+            style:{ background:'rgba(245,158,11,.07)', border:'1px solid rgba(245,158,11,.25)', borderRadius:8, padding:'8px 14px', marginBottom:12, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between' }
+          },
+            React.createElement('span', { style:{ fontSize:11, color:'#f59e0b', fontWeight:700 } },
+              React.createElement('i', { className:'fas fa-moon', style:{ marginRight:7 } }),
+              'Guru ini memiliki ' + offdays.length + ' hari libur/off: ' + offdays.join(', ')
+            ),
+            React.createElement('i', { className: showOffdays ? 'fas fa-chevron-up':'fas fa-chevron-down', style:{ color:'#f59e0b', fontSize:11 } })
+          ),
+
+          // Grid jadwal per hari
+          React.createElement('div', { style:{ display:'flex', flexDirection:'column', gap:12 } },
+            hariTampil.map(function(h) {
+              var isOffDay = offdays.includes(h);
+              var jpSlots = [];
+              for (var j = 1; j <= maxJPAktif; j++) {
+                if (slotAktif[h] && slotAktif[h][j]) jpSlots.push(j);
+              }
+              if (jpSlots.length === 0) return null;
+
+              return React.createElement('div', { key:h, style:{ background:'#161622', border:'1px solid #252535', borderRadius:10, overflow:'hidden' } },
+                // Header hari
+                React.createElement('div', { style:{
+                  padding:'10px 14px', display:'flex', alignItems:'center', justifyContent:'space-between',
+                  background: isOffDay ? 'rgba(245,158,11,.07)' : 'rgba(0,0,0,.3)',
+                  borderBottom:'1px solid #252535'
+                } },
+                  React.createElement('span', { style:{ fontSize:12, fontWeight:900, color: isOffDay ? '#f59e0b' : '#fff' } },
+                    React.createElement('i', { className: isOffDay ? 'fas fa-moon':'fas fa-calendar-day', style:{ marginRight:8, color: isOffDay ? '#f59e0b':'#00b8d4' } }),
+                    h,
+                    isOffDay && React.createElement('span', { style:{ fontSize:10, color:'#f59e0b', marginLeft:8, fontWeight:700 } }, '— Hari Libur/Off')
+                  ),
+                  !isOffDay && React.createElement('span', { style:{ fontSize:10, color:'#555' } },
+                    jpSlots.filter(function(j2){ return !(slotSibuk[h] && slotSibuk[h][j2]); }).length + ' slot kosong dari ' + jpSlots.length
+                  )
+                ),
+
+                // Grid JP
+                React.createElement('div', { style:{ padding:'12px 14px' } },
+                  React.createElement('div', { style:{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(72px, 1fr))', gap:6 } },
+                    jpSlots.map(function(j) {
+                      var isSibuk2 = slotSibuk[h] && slotSibuk[h][j];
+                      var isOff2 = isOffDay;
+                      return React.createElement('div', { key:j, style: getCellStyle(h, j), title: isSibuk2 ? (slotSibuk[h][j].map(function(s){ return s.kelasNama+': '+s.mapelNama; }).join('\n')) : (isOff2 ? 'Hari libur/off' : 'Kosong') },
+                        React.createElement('div', { style:{ fontSize:9, color:'#555', fontWeight:700, marginBottom:3 } }, 'JP ' + j),
+                        isOff2
+                          ? React.createElement('i', { className:'fas fa-moon', style:{ fontSize:13, color:'#f59e0b' } })
+                          : isSibuk2
+                            ? React.createElement('div', null,
+                                React.createElement('i', { className:'fas fa-chalkboard-teacher', style:{ fontSize:11, color:'#f87171', display:'block', marginBottom:2 } }),
+                                React.createElement('div', { style:{ fontSize:8, color:'#f87171', lineHeight:1.3, fontWeight:700 } },
+                                  slotSibuk[h][j].map(function(s){ return s.kelasNama; }).join(', ')
+                                )
+                              )
+                            : React.createElement('div', null,
+                                React.createElement('i', { className:'fas fa-check-circle', style:{ fontSize:13, color:'#00e5a0', display:'block', marginBottom:1 } }),
+                                React.createElement('div', { style:{ fontSize:8, color:'#00e5a0', fontWeight:700 } }, 'KOSONG')
+                              )
+                      );
+                    })
+                  )
+                )
+              );
+            })
+          ),
+
+          // Legenda
+          React.createElement('div', { style:{ marginTop:16, display:'flex', gap:16, flexWrap:'wrap', padding:'10px 14px', background:'#161622', border:'1px solid #252535', borderRadius:10 } },
+            [
+              { icon:'fa-check-circle', color:'#00e5a0', bg:'rgba(0,229,160,.1)', label:'Slot Kosong' },
+              { icon:'fa-chalkboard-teacher', color:'#f87171', bg:'rgba(239,68,68,.12)', label:'Sedang Mengajar' },
+              { icon:'fa-moon', color:'#f59e0b', bg:'rgba(245,158,11,.1)', label:'Hari Libur/Off' },
+            ].map(function(item) {
+              return React.createElement('div', { key:item.label, style:{ display:'flex', alignItems:'center', gap:6 } },
+                React.createElement('div', { style:{ width:24, height:24, borderRadius:5, background:item.bg, display:'flex', alignItems:'center', justifyContent:'center' } },
+                  React.createElement('i', { className:'fas '+item.icon, style:{ fontSize:11, color:item.color } })
+                ),
+                React.createElement('span', { style:{ fontSize:11, color:'#666' } }, item.label)
+              );
+            })
+          )
+        )
+      )
+    )
+  );
+};
+
+
 // MAIN APP
 var App = function App() {
   var _useState103 = useState('dashboard'),
@@ -12345,6 +12818,10 @@ var App = function App() {
       id: 'tukar',
       i: 'fa-exchange-alt',
       l: 'Tukar Jadwal'
+    }, {
+      id: 'slotguru',
+      i: 'fa-search',
+      l: 'Cari Slot Kosong'
     }]
   }, {
     s: 'ADMINISTRASI',
@@ -12713,6 +13190,15 @@ var App = function App() {
     guruPreferensi: guruPreferensi,
     settingGlobal: settingGlobal,
     setTab: setTab
+  }), tab === 'slotguru' && /*#__PURE__*/React.createElement(CariSlotKosong, {
+    guru: guru,
+    kelas: kelas,
+    jadwal: jadwal,
+    slotConfig: slotConfig,
+    guruOffDays: guruOffDays,
+    assignments: assignments,
+    mapel: mapel,
+    setTab: setTab
   }), showExitConfirm && /*#__PURE__*/React.createElement("div", {
     className: "modal-bg",
     onClick: cancelExit
@@ -12761,6 +13247,43 @@ var App = function App() {
 };
 var splash = document.getElementById('splash');
 if (splash) splash.remove();
-ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App, null));</script>
+
+var SimjasErrorBoundary = /*#__PURE__*/function (_React$Component) {
+  function SimjasErrorBoundary(props) {
+    var _this;
+    _this = _React$Component.call(this, props) || this;
+    _this.state = { hasError: false };
+    return _this;
+  }
+  SimjasErrorBoundary.prototype = Object.create(_React$Component.prototype);
+  SimjasErrorBoundary.prototype.constructor = SimjasErrorBoundary;
+  SimjasErrorBoundary.getDerivedStateFromError = function (error) {
+    return { hasError: true };
+  };
+  SimjasErrorBoundary.prototype.componentDidCatch = function (error, info) {
+    var detail = (error && error.stack) ? error.stack : String(error);
+    if (info && info.componentStack) detail += '\n\nComponent stack:' + info.componentStack;
+    if (window.__simjasShowError) {
+      window.__simjasShowError('⚠️ Error Saat Menampilkan Aplikasi', 'Terjadi error saat aplikasi mencoba menampilkan halaman. Ini sering terjadi karena data lama di perangkat tidak cocok dengan versi aplikasi saat ini. Coba "Reset Data" di bawah ini jika "Muat Ulang" tidak membantu.', detail);
+    }
+  };
+  SimjasErrorBoundary.prototype.render = function () {
+    if (this.state.hasError) {
+      return null; // overlay vanilla JS sudah menampilkan pesan error
+    }
+    return this.props.children;
+  };
+  return SimjasErrorBoundary;
+}(React.Component);
+
+try {
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    /*#__PURE__*/React.createElement(SimjasErrorBoundary, null, /*#__PURE__*/React.createElement(App, null))
+  );
+} catch (e) {
+  if (window.__simjasShowError) {
+    window.__simjasShowError('⚠️ Error Saat Memulai Aplikasi', 'Terjadi error saat aplikasi mencoba mulai berjalan.', (e && e.stack) ? e.stack : String(e));
+  }
+}</script>
 </body>
 </html>

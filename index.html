@@ -186,7 +186,7 @@ var _React = React,
   memo = _React.memo,
   useRef = _React.useRef,
   useMemo = _React.useMemo;
-var HARI = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+var HARI = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 var JP_MAX = 10;
 var KLASS_COLORS = ['from-emerald-500/20 to-teal-500/20 border-emerald-500/40 text-emerald-300', 'from-blue-500/20 to-cyan-500/20 border-blue-500/40 text-blue-300', 'from-purple-500/20 to-violet-500/20 border-purple-500/40 text-purple-300', 'from-amber-500/20 to-orange-500/20 border-amber-500/40 text-amber-300', 'from-rose-500/20 to-pink-500/20 border-rose-500/40 text-rose-300', 'from-indigo-500/20 to-blue-500/20 border-indigo-500/40 text-indigo-300'];
 var DEFAULT_KELAS = [{
@@ -489,6 +489,10 @@ var Logo = memo(function (_ref) {
 var validateJadwal = function validateJadwal(kelas, HARI, JP_MAX, slotConfig, jadwal, assignments, lockedSlots, guru, guruPreferensi, mapel) {
   var reports = [];
   var isAllValid = true;
+  var mNamaVD = function mNamaVD(id) {
+    var m = (mapel || []).find(function (x) { return x.id === id; });
+    return m ? m.nama : '?';
+  };
   kelas.forEach(function (k) {
     var classValid = true;
     var errors = [];
@@ -496,6 +500,20 @@ var validateJadwal = function validateJadwal(kelas, HARI, JP_MAX, slotConfig, ja
     HARI.forEach(function (h) {
       var consecutiveMapel = null;
       var consecCount = 0;
+      var consecStartJp = null;
+      var tutupBlok = function tutupBlok() {
+        if (consecutiveMapel === null) return;
+        if (consecCount === 1) {
+          errors.push("JP Tunggal: ".concat(mNamaVD(consecutiveMapel), " hanya 1 JP sendiri di hari ").concat(h, " JP ").concat(consecStartJp, "."));
+          classValid = false;
+        } else if (consecCount > 4) {
+          errors.push("Pelanggaran beruntun: Mapel lebih dari 4 JP di hari ".concat(h));
+          classValid = false;
+        }
+        consecutiveMapel = null;
+        consecCount = 0;
+        consecStartJp = null;
+      };
       for (var j = 1; j <= JP_MAX; j++) {
         var _slotConfig$k$id;
         if (slotConfig !== null && slotConfig !== void 0 && (_slotConfig$k$id = slotConfig[k.id]) !== null && _slotConfig$k$id !== void 0 && (_slotConfig$k$id = _slotConfig$k$id[h]) !== null && _slotConfig$k$id !== void 0 && _slotConfig$k$id[j]) {
@@ -504,21 +522,25 @@ var validateJadwal = function validateJadwal(kelas, HARI, JP_MAX, slotConfig, ja
           if (!ass) {
             errors.push("Slot Kosong: ".concat(h, " JP ").concat(j));
             classValid = false;
+            tutupBlok();
           } else if (!ass.isUpacara) {
             mapelCounts[ass.mapelId] = (mapelCounts[ass.mapelId] || 0) + 1;
             if (ass.mapelId === consecutiveMapel) {
               consecCount++;
-              if (consecCount > 4) {
-                errors.push("Pelanggaran beruntun: Mapel lebih dari 4 JP di hari ".concat(h));
-                classValid = false;
-              }
             } else {
+              tutupBlok();
               consecutiveMapel = ass.mapelId;
               consecCount = 1;
+              consecStartJp = j;
             }
+          } else {
+            tutupBlok();
           }
+        } else {
+          tutupBlok();
         }
       }
+      tutupBlok();
     });
     var classAssignments = assignments.filter(function (a) {
       return a.kelasId === k.id;
@@ -545,10 +567,6 @@ var validateJadwal = function validateJadwal(kelas, HARI, JP_MAX, slotConfig, ja
   var gNamaVD = function gNamaVD(id) {
     var g = (guru || []).find(function (x) { return x.id === id; });
     return g ? g.nama : '?';
-  };
-  var mNamaVD = function mNamaVD(id) {
-    var m = (mapel || []).find(function (x) { return x.id === id; });
-    return m ? m.nama : '?';
   };
   HARI.forEach(function (h) {
     var _loop = function _loop(j) {
@@ -1468,6 +1486,10 @@ var MasterData = memo(function (_ref5) {
     _useState0 = _slicedToArray(_useState9, 2),
     fGuru = _useState0[0],
     setFGuru = _useState0[1];
+  var _useStateIM = useState(false),
+    _useStateIM2 = _slicedToArray(_useStateIM, 2),
+    showImport = _useStateIM2[0],
+    setShowImport = _useStateIM2[1];
   var _useStateEG = useState(null),
     _useStateEG2 = _slicedToArray(_useStateEG, 2),
     editGuruId = _useStateEG2[0],
@@ -1500,7 +1522,12 @@ var MasterData = memo(function (_ref5) {
     setEditGuruVal('');
   };
   var hapus = function hapus(tipe, id) {
-    if (!confirm('Hapus data ini? Data terkait (tugas & jadwal) juga ikut terhapus.')) return;
+    var label = {kelas:'kelas',mapel:'mata pelajaran',guru:'guru'}[tipe] || 'data';
+    var nama = '';
+    if (tipe === 'kelas') { var _k = kelas.find(function(k){return k.id===id;}); nama = _k ? _k.nama : ''; }
+    if (tipe === 'mapel') { var _m = mapel.find(function(m){return m.id===id;}); nama = _m ? _m.nama : ''; }
+    if (tipe === 'guru') { var _g = guru.find(function(g){return g.id===id;}); nama = _g ? _g.nama : ''; }
+    if (!confirm('Hapus ' + label + (nama ? ' "' + nama + '"' : '') + '?\n\nSemua tugas mengajar dan jadwal yang terkait dengan ' + label + ' ini juga akan ikut terhapus. Tindakan ini tidak dapat dibatalkan.')) return;
     if (typeof pushUndoSnapshot === 'function') pushUndoSnapshot();
     if (tipe === 'kelas') {
       setKelas(function (p) {
@@ -1594,12 +1621,26 @@ var MasterData = memo(function (_ref5) {
       color: '#00b8d4',
       marginRight: 8
     }
-  }), "Data Master"), /*#__PURE__*/React.createElement(UndoRedoBar, {
-    doUndo: doUndo,
-    doRedo: doRedo,
-    undoCount: undoCount,
-    redoCount: redoCount
-  })), /*#__PURE__*/React.createElement("div", {
+  }), "Data Master"), /*#__PURE__*/React.createElement("div", { style:{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' } },
+    /*#__PURE__*/React.createElement("button", {
+      onClick: function onClick() { return setShowImport(true); },
+      style: {
+        display:'flex', alignItems:'center', gap:6,
+        background:'linear-gradient(135deg,rgba(0,229,160,.15),rgba(0,184,212,.1))',
+        border:'1px solid rgba(0,229,160,.4)', color:'#00e5a0',
+        borderRadius:8, padding:'8px 14px', fontSize:12, fontWeight:700, cursor:'pointer'
+      }
+    }, /*#__PURE__*/React.createElement("i", { className:"fas fa-file-import" }), "\u00A0Import Massal"),
+    /*#__PURE__*/React.createElement(UndoRedoBar, {
+      doUndo: doUndo, doRedo: doRedo, undoCount: undoCount, redoCount: redoCount
+    })
+  )), showImport && /*#__PURE__*/React.createElement(ImportMassal, {
+    guru: guru, setGuru: setGuru,
+    kelas: kelas, setKelas: setKelas,
+    mapel: mapel, setMapel: setMapel,
+    assignments: assignments, setAssignments: setAssignments,
+    onClose: function onClose() { return setShowImport(false); }
+  }), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))',
@@ -2138,6 +2179,470 @@ var MasterData = memo(function (_ref5) {
     })));
   })))));
 });
+
+// =====================================================================
+// KOMPONEN IMPORT MASSAL — Copy-Paste & Upload Excel
+// =====================================================================
+var ImportMassal = memo(function (_ref_im) {
+  var guru = _ref_im.guru, setGuru = _ref_im.setGuru,
+      kelas = _ref_im.kelas, setKelas = _ref_im.setKelas,
+      mapel = _ref_im.mapel, setMapel = _ref_im.setMapel,
+      assignments = _ref_im.assignments, setAssignments = _ref_im.setAssignments,
+      onClose = _ref_im.onClose;
+
+  var _useState_im1 = useState('copas'), _im1 = _slicedToArray(_useState_im1, 2),
+      activeTab = _im1[0], setActiveTab = _im1[1];
+  var _useState_im2 = useState('guru_kelas_mapel'), _im2 = _slicedToArray(_useState_im2, 2),
+      copasMode = _im2[0], setCopasMode = _im2[1];
+  var _useState_im3 = useState(''), _im3 = _slicedToArray(_useState_im3, 2),
+      copasText = _im3[0], setCopasText = _im3[1];
+  var _useState_im4 = useState([]), _im4 = _slicedToArray(_useState_im4, 2),
+      preview = _im4[0], setPreview = _im4[1];
+  var _useState_im5 = useState(null), _im5 = _slicedToArray(_useState_im5, 2),
+      result = _im5[0], setResult = _im5[1];
+  var _useState_im6 = useState(false), _im6 = _slicedToArray(_useState_im6, 2),
+      loading = _im6[0], setLoading = _im6[1];
+  var _useState_im7 = useState(null), _im7 = _slicedToArray(_useState_im7, 2),
+      xlsxResult = _im7[0], setXlsxResult = _im7[1];
+
+  var PLACEHOLDER_MAP = {
+    guru_kelas_mapel: 'Budi Santoso, S.Pd | Kelas 7A | Matematika\nSiti Aminah, S.Pd | Kelas 7A | Bahasa Indonesia\nAhmad Fauzi, S.Pd | Kelas 8B | IPA\n\n# Format: Nama Guru | Kelas | Mata Pelajaran\n# Satu baris = satu penugasan',
+    guru_mapel: 'Budi Santoso, S.Pd | Matematika\nSiti Aminah, S.Pd | Bahasa Indonesia\n\n# Format: Nama Guru | Mata Pelajaran\n# (tanpa kelas)',
+    kelas_saja: 'Kelas 7A\nKelas 7B\nKelas 8A\nKelas 8B\n\n# Satu kelas per baris',
+    mapel_saja: 'Matematika\nBahasa Indonesia\nIPA\nIPS\nPJOK\n\n# Satu mata pelajaran per baris',
+    guru_saja: 'Budi Santoso, S.Pd\nSiti Aminah, S.Pd\nAhmad Fauzi, S.Pd\n\n# Satu guru per baris'
+  };
+
+  var parseCopas = function parseCopas(text, mode) {
+    var lines = text.split('\n').map(function(l){ return l.trim(); }).filter(function(l){ return l && !l.startsWith('#'); });
+    var rows = [];
+    lines.forEach(function(line) {
+      var parts = line.split('|').map(function(p){ return p.trim(); });
+      if (mode === 'guru_kelas_mapel' && parts.length >= 3) {
+        rows.push({ namaGuru: parts[0], namaKelas: parts[1], namaMapel: parts[2], valid: !!(parts[0] && parts[1] && parts[2]) });
+      } else if (mode === 'guru_mapel' && parts.length >= 2) {
+        rows.push({ namaGuru: parts[0], namaMapel: parts[1], valid: !!(parts[0] && parts[1]) });
+      } else if (mode === 'kelas_saja') {
+        rows.push({ namaKelas: parts[0], valid: !!parts[0] });
+      } else if (mode === 'mapel_saja') {
+        rows.push({ namaMapel: parts[0], valid: !!parts[0] });
+      } else if (mode === 'guru_saja') {
+        rows.push({ namaGuru: parts[0], valid: !!parts[0] });
+      } else if (mode === 'guru_kelas_mapel' && parts.length === 2) {
+        rows.push({ namaGuru: parts[0], namaMapel: parts[1], valid: !!(parts[0] && parts[1]), autoDetect2col: true });
+      } else {
+        rows.push({ raw: line, valid: false, err: 'Format tidak dikenali' });
+      }
+    });
+    return rows;
+  };
+
+  var handlePreview = function handlePreview() {
+    if (!copasText.trim()) return;
+    setPreview(parseCopas(copasText, copasMode));
+    setResult(null);
+  };
+
+  var getOrCreateId = function getOrCreateId(list, nama, prefix) {
+    var existing = list.find(function(x){ return x.nama.toLowerCase().trim() === nama.toLowerCase().trim(); });
+    if (existing) return { list: list, id: existing.id, isNew: false };
+    var newId = prefix + Date.now() + Math.floor(Math.random()*1000);
+    var newItem = { id: newId, nama: nama.trim() };
+    if (prefix === 'K') Object.assign(newItem, { jamMasuk: '07:00', durasiJp: 35, jpIstirahat: 4, durasiIstirahat: 15 });
+    return { list: [].concat(_toConsumableArray(list), [newItem]), id: newId, isNew: true };
+  };
+
+  var handleImport = function handleImport() {
+    if (preview.length === 0) return;
+    var validRows = preview.filter(function(r){ return r.valid; });
+    if (validRows.length === 0) { alert('Tidak ada data valid untuk diimpor.'); return; }
+
+    var newGuru = _toConsumableArray(guru);
+    var newKelas = _toConsumableArray(kelas);
+    var newMapel = _toConsumableArray(mapel);
+    var newAssignments = _toConsumableArray(assignments);
+    var stats = { guru: 0, kelas: 0, mapel: 0, tugas: 0, skip: 0 };
+
+    validRows.forEach(function(row) {
+      var guruId = null, kelasId = null, mapelId = null;
+
+      if (row.namaGuru) {
+        var rg = getOrCreateId(newGuru, row.namaGuru, 'G');
+        if (rg.isNew) stats.guru++;
+        newGuru = rg.list;
+        guruId = rg.id;
+      }
+      if (row.namaKelas) {
+        var rk = getOrCreateId(newKelas, row.namaKelas, 'K');
+        if (rk.isNew) stats.kelas++;
+        newKelas = rk.list;
+        kelasId = rk.id;
+      }
+      if (row.namaMapel) {
+        var rm = getOrCreateId(newMapel, row.namaMapel, 'M');
+        if (rm.isNew) stats.mapel++;
+        newMapel = rm.list;
+        mapelId = rm.id;
+      }
+
+      // Buat tugas mengajar jika ada guru + mapel + kelas
+      if (guruId && mapelId && kelasId) {
+        var exists = newAssignments.find(function(a){ return a.guruId === guruId && a.mapelId === mapelId && a.kelasId === kelasId; });
+        if (!exists) {
+          newAssignments.push({ id: 'A' + Date.now() + Math.floor(Math.random()*9999), guruId: guruId, mapelId: mapelId, kelasId: kelasId, jp: 2, isBlock: false, isPagi: false });
+          stats.tugas++;
+        } else {
+          stats.skip++;
+        }
+      }
+    });
+
+    setGuru(newGuru);
+    setKelas(newKelas);
+    setMapel(newMapel);
+    setAssignments(newAssignments);
+    setResult(stats);
+    setPreview([]);
+    setCopasText('');
+  };
+
+  // ── UPLOAD EXCEL ──
+  var handleExcel = function handleExcel(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    setLoading(true);
+    setXlsxResult(null);
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      try {
+        var wb = XLSX.read(ev.target.result, { type: 'array' });
+        var newGuru = _toConsumableArray(guru);
+        var newKelas = _toConsumableArray(kelas);
+        var newMapel = _toConsumableArray(mapel);
+        var newAssignments = _toConsumableArray(assignments);
+        var stats = { guru: 0, kelas: 0, mapel: 0, tugas: 0, skip: 0, sheets: [] };
+
+        // Sheet GURU
+        var sheetGuru = wb.Sheets['Guru'] || wb.Sheets['GURU'] || wb.Sheets['guru'];
+        if (sheetGuru) {
+          var rows = XLSX.utils.sheet_to_json(sheetGuru, { header: 1 });
+          var added = 0;
+          rows.forEach(function(row, i) {
+            if (i === 0) return; // skip header
+            var nama = (row[0] || '').toString().trim();
+            if (!nama) return;
+            var rg = getOrCreateId(newGuru, nama, 'G');
+            if (rg.isNew) { stats.guru++; added++; }
+            newGuru = rg.list;
+          });
+          stats.sheets.push('Guru (' + added + ' baru)');
+        }
+
+        // Sheet KELAS
+        var sheetKelas = wb.Sheets['Kelas'] || wb.Sheets['KELAS'] || wb.Sheets['kelas'];
+        if (sheetKelas) {
+          var rows2 = XLSX.utils.sheet_to_json(sheetKelas, { header: 1 });
+          var added2 = 0;
+          rows2.forEach(function(row, i) {
+            if (i === 0) return;
+            var nama = (row[0] || '').toString().trim();
+            if (!nama) return;
+            var jamMasuk = (row[1] || '07:00').toString().trim();
+            var durasiJp = parseInt(row[2]) || 35;
+            var jpIstirahat = parseInt(row[3]) || 4;
+            var durasiIstirahat = parseInt(row[4]) || 15;
+            var existing = newKelas.find(function(x){ return x.nama.toLowerCase() === nama.toLowerCase(); });
+            if (!existing) {
+              newKelas.push({ id: 'K'+Date.now()+Math.floor(Math.random()*1000), nama: nama, jamMasuk: jamMasuk, durasiJp: durasiJp, jpIstirahat: jpIstirahat, durasiIstirahat: durasiIstirahat });
+              stats.kelas++; added2++;
+            }
+          });
+          stats.sheets.push('Kelas (' + added2 + ' baru)');
+        }
+
+        // Sheet MAPEL
+        var sheetMapel = wb.Sheets['Mapel'] || wb.Sheets['MAPEL'] || wb.Sheets['mapel'] || wb.Sheets['Mata Pelajaran'];
+        if (sheetMapel) {
+          var rows3 = XLSX.utils.sheet_to_json(sheetMapel, { header: 1 });
+          var added3 = 0;
+          rows3.forEach(function(row, i) {
+            if (i === 0) return;
+            var nama = (row[0] || '').toString().trim();
+            if (!nama) return;
+            var rm = getOrCreateId(newMapel, nama, 'M');
+            if (rm.isNew) { stats.mapel++; added3++; }
+            newMapel = rm.list;
+          });
+          stats.sheets.push('Mapel (' + added3 + ' baru)');
+        }
+
+        // Sheet TUGAS (opsional: Guru | Kelas | Mapel | JP)
+        var sheetTugas = wb.Sheets['Tugas'] || wb.Sheets['TUGAS'] || wb.Sheets['Penugasan'];
+        if (sheetTugas) {
+          var rows4 = XLSX.utils.sheet_to_json(sheetTugas, { header: 1 });
+          var added4 = 0;
+          rows4.forEach(function(row, i) {
+            if (i === 0) return;
+            var namaGuru = (row[0]||'').toString().trim();
+            var namaKelas = (row[1]||'').toString().trim();
+            var namaMapel = (row[2]||'').toString().trim();
+            var jp = parseInt(row[3]) || 2;
+            if (!namaGuru || !namaKelas || !namaMapel) return;
+            var g = newGuru.find(function(x){ return x.nama.toLowerCase()===namaGuru.toLowerCase(); });
+            var k = newKelas.find(function(x){ return x.nama.toLowerCase()===namaKelas.toLowerCase(); });
+            var m = newMapel.find(function(x){ return x.nama.toLowerCase()===namaMapel.toLowerCase(); });
+            if (g && k && m) {
+              var exists = newAssignments.find(function(a){ return a.guruId===g.id&&a.mapelId===m.id&&a.kelasId===k.id; });
+              if (!exists) { newAssignments.push({ id:'A'+Date.now()+Math.floor(Math.random()*9999), guruId:g.id, mapelId:m.id, kelasId:k.id, jp:jp, isBlock:false, isPagi:false }); stats.tugas++; added4++; }
+              else stats.skip++;
+            }
+          });
+          if (added4 > 0) stats.sheets.push('Tugas (' + added4 + ' baru)');
+        }
+
+        setGuru(newGuru);
+        setKelas(newKelas);
+        setMapel(newMapel);
+        setAssignments(newAssignments);
+        setXlsxResult(stats);
+      } catch(err) {
+        alert('Gagal membaca file Excel: ' + err.message);
+      }
+      setLoading(false);
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
+
+  var downloadTemplate = function downloadTemplate() {
+    var wb = XLSX.utils.book_new();
+    var wsGuru = XLSX.utils.aoa_to_sheet([
+      ['Nama Guru (wajib)', 'NIP (opsional)', 'Jabatan (opsional)'],
+      ['Budi Santoso, S.Pd','197001011995011001','Guru Mapel'],
+      ['Siti Aminah, S.Pd','197505152000122002','Guru Kelas']
+    ]);
+    var wsKelas = XLSX.utils.aoa_to_sheet([
+      ['Nama Kelas (wajib)', 'Jam Masuk', 'Durasi JP (menit)', 'JP Istirahat ke-', 'Durasi Istirahat (menit)'],
+      ['Kelas 7A','07:00',40,4,15],
+      ['Kelas 7B','07:00',40,4,15],
+      ['Kelas 8A','07:30',40,4,20]
+    ]);
+    var wsMapel = XLSX.utils.aoa_to_sheet([
+      ['Nama Mata Pelajaran (wajib)'],
+      ['Matematika'],['Bahasa Indonesia'],['IPA'],['IPS'],['PJOK'],['Seni Budaya']
+    ]);
+    var wsTugas = XLSX.utils.aoa_to_sheet([
+      ['Nama Guru','Nama Kelas','Nama Mata Pelajaran','JP per Minggu'],
+      ['Budi Santoso, S.Pd','Kelas 7A','Matematika',4],
+      ['Siti Aminah, S.Pd','Kelas 7A','Bahasa Indonesia',4]
+    ]);
+    XLSX.utils.book_append_sheet(wb, wsGuru, 'Guru');
+    XLSX.utils.book_append_sheet(wb, wsKelas, 'Kelas');
+    XLSX.utils.book_append_sheet(wb, wsMapel, 'Mapel');
+    XLSX.utils.book_append_sheet(wb, wsTugas, 'Tugas');
+    XLSX.writeFile(wb, 'Template_Import_SIMJAS.xlsx');
+  };
+
+  var validCount = preview.filter(function(r){ return r.valid; }).length;
+  var invalidCount = preview.filter(function(r){ return !r.valid; }).length;
+
+  var sTab = function(active) { return {
+    padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', borderRadius: 8,
+    background: active ? 'linear-gradient(135deg,#00c87a,#00a8c4)' : 'rgba(255,255,255,0.05)',
+    color: active ? '#000' : '#888', transition: 'all .2s'
+  }; };
+
+  var sMode = function(active) { return {
+    flex: 1, padding: '7px 8px', fontSize: 11, fontWeight: active ? 700 : 500, cursor: 'pointer', border: active ? '1px solid rgba(0,229,160,.5)' : '1px solid #333',
+    borderRadius: 6, background: active ? 'rgba(0,229,160,.08)' : '#0d0d14',
+    color: active ? '#00e5a0' : '#666', transition: 'all .15s', textAlign: 'center'
+  }; };
+
+  return /*#__PURE__*/React.createElement("div", { className: "modal-bg", onClick: onClose },
+    /*#__PURE__*/React.createElement("div", {
+      className: "modal-box ain",
+      style: { maxWidth: 680, width: '100%', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+      onClick: function(e){ e.stopPropagation(); }
+    },
+      // HEADER
+      /*#__PURE__*/React.createElement("div", { style: { display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: 16, flexShrink: 0 } },
+        /*#__PURE__*/React.createElement("div", null,
+          /*#__PURE__*/React.createElement("h3", { style: { fontFamily:'Exo 2', fontWeight:900, fontSize:17, color:'#fff', marginBottom:2 } },
+            /*#__PURE__*/React.createElement("i", { className:"fas fa-file-import", style:{ color:'#00e5a0', marginRight:8 } }),
+            "Import Data Massal"),
+          /*#__PURE__*/React.createElement("p", { style:{ fontSize:11, color:'#666' } }, "Copy-paste banyak data sekaligus, atau upload file Excel")
+        ),
+        /*#__PURE__*/React.createElement("button", { onClick: onClose, style:{ background:'none', border:'none', color:'#666', fontSize:18, cursor:'pointer' } }, "✕")
+      ),
+
+      // TAB
+      /*#__PURE__*/React.createElement("div", { style:{ display:'flex', gap:8, marginBottom:16, flexShrink:0 } },
+        /*#__PURE__*/React.createElement("button", { style: sTab(activeTab==='copas'), onClick:function(){ setActiveTab('copas'); setResult(null); setPreview([]); } },
+          /*#__PURE__*/React.createElement("i", { className:"fas fa-paste", style:{marginRight:6} }), "Copy-Paste Massal"),
+        /*#__PURE__*/React.createElement("button", { style: sTab(activeTab==='excel'), onClick:function(){ setActiveTab('excel'); setResult(null); setPreview([]); } },
+          /*#__PURE__*/React.createElement("i", { className:"fas fa-file-excel", style:{marginRight:6} }), "Upload Excel (.xlsx)")
+      ),
+
+      // KONTEN SCROLL
+      /*#__PURE__*/React.createElement("div", { className:"hs", style:{ flex:1, overflowY:'auto' } },
+
+        // ── TAB COPY PASTE ──
+        activeTab === 'copas' && /*#__PURE__*/React.createElement("div", null,
+
+          // Mode selector
+          /*#__PURE__*/React.createElement("p", { style:{ fontSize:11, color:'#888', marginBottom:8 } }, "Pilih format data yang akan dipaste:"),
+          /*#__PURE__*/React.createElement("div", { style:{ display:'flex', gap:6, marginBottom:14, flexWrap:'wrap' } },
+            [
+              { id:'guru_kelas_mapel', label:'Guru | Kelas | Mapel' },
+              { id:'guru_mapel', label:'Guru | Mapel' },
+              { id:'guru_saja', label:'Guru saja' },
+              { id:'kelas_saja', label:'Kelas saja' },
+              { id:'mapel_saja', label:'Mapel saja' }
+            ].map(function(m){ return /*#__PURE__*/React.createElement("button", { key:m.id, style: sMode(copasMode===m.id), onClick:function(){ setCopasMode(m.id); setCopasText(''); setPreview([]); setResult(null); } }, m.label); })
+          ),
+
+          // Format info box
+          /*#__PURE__*/React.createElement("div", { style:{ background:'rgba(0,184,212,.06)', border:'1px solid rgba(0,184,212,.2)', borderRadius:8, padding:'8px 12px', marginBottom:12, fontSize:11, color:'#00b8d4' } },
+            copasMode === 'guru_kelas_mapel' && /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, "Format:"), " Nama Guru ", /*#__PURE__*/React.createElement("b", { style:{color:'#00e5a0'} }, "|"), " Nama Kelas ", /*#__PURE__*/React.createElement("b", { style:{color:'#00e5a0'} }, "|"), " Mata Pelajaran — satu baris per penugasan. Guru/kelas/mapel baru otomatis dibuat."),
+            copasMode === 'guru_mapel' && /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, "Format:"), " Nama Guru ", /*#__PURE__*/React.createElement("b", { style:{color:'#00e5a0'} }, "|"), " Mata Pelajaran — tanpa kelas. Tugas mengajar tidak dibuat."),
+            copasMode === 'guru_saja' && /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, "Format:"), " Nama Guru — satu per baris. Hanya menambah daftar guru."),
+            copasMode === 'kelas_saja' && /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, "Format:"), " Nama Kelas — satu per baris. Hanya menambah daftar kelas."),
+            copasMode === 'mapel_saja' && /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, "Format:"), " Nama Mapel — satu per baris. Hanya menambah daftar mata pelajaran.")
+          ),
+
+          // Textarea
+          /*#__PURE__*/React.createElement("textarea", {
+            value: copasText,
+            onChange: function(e){ setCopasText(e.target.value); setPreview([]); setResult(null); },
+            placeholder: PLACEHOLDER_MAP[copasMode],
+            style:{ width:'100%', height:160, background:'#0d0d14', border:'1px solid #333', borderRadius:8, padding:'10px 12px', fontSize:12, color:'#e2e2f0', fontFamily:'monospace', resize:'vertical', outline:'none', lineHeight:1.6 }
+          }),
+
+          // Tombol preview
+          /*#__PURE__*/React.createElement("div", { style:{ display:'flex', gap:8, marginTop:10 } },
+            /*#__PURE__*/React.createElement("button", {
+              className:"btn-p",
+              onClick: handlePreview,
+              disabled: !copasText.trim(),
+              style:{ borderRadius:8, padding:'9px 18px', fontSize:12 }
+            }, /*#__PURE__*/React.createElement("i", { className:"fas fa-search", style:{marginRight:6} }), "Preview Data"),
+            copasText.trim() && /*#__PURE__*/React.createElement("button", {
+              onClick:function(){ setCopasText(''); setPreview([]); setResult(null); },
+              style:{ background:'none', border:'1px solid #333', color:'#888', borderRadius:8, padding:'9px 14px', fontSize:12, cursor:'pointer' }
+            }, "Bersihkan")
+          ),
+
+          // PREVIEW TABEL
+          preview.length > 0 && /*#__PURE__*/React.createElement("div", { style:{ marginTop:16 } },
+            /*#__PURE__*/React.createElement("div", { style:{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 } },
+              /*#__PURE__*/React.createElement("p", { style:{ fontSize:12, fontWeight:700, color:'#fff' } }, "Preview — ", preview.length, " baris"),
+              /*#__PURE__*/React.createElement("div", { style:{ display:'flex', gap:8 } },
+                validCount > 0 && /*#__PURE__*/React.createElement("span", { style:{ fontSize:11, color:'#00e5a0', background:'rgba(0,229,160,.1)', padding:'2px 8px', borderRadius:4 } }, "✓ ", validCount, " valid"),
+                invalidCount > 0 && /*#__PURE__*/React.createElement("span", { style:{ fontSize:11, color:'#f87171', background:'rgba(248,113,113,.1)', padding:'2px 8px', borderRadius:4 } }, "✗ ", invalidCount, " error")
+              )
+            ),
+            /*#__PURE__*/React.createElement("div", { style:{ background:'#0d0d14', borderRadius:8, overflow:'hidden', border:'1px solid #252535', maxHeight:220, overflowY:'auto' } },
+              preview.map(function(row, i){
+                return /*#__PURE__*/React.createElement("div", { key:i, style:{ display:'flex', alignItems:'center', gap:8, padding:'6px 12px', borderBottom:'1px solid #1a1a28', background: row.valid ? 'transparent' : 'rgba(248,113,113,.05)' } },
+                  /*#__PURE__*/React.createElement("span", { style:{ fontSize:10, color: row.valid ? '#00e5a0' : '#f87171', width:14, flexShrink:0 } }, row.valid ? '✓' : '✗'),
+                  row.namaGuru && /*#__PURE__*/React.createElement("span", { style:{ fontSize:11, background:'rgba(251,191,36,.1)', color:'#fbbf24', padding:'1px 6px', borderRadius:4 } }, row.namaGuru),
+                  row.namaKelas && /*#__PURE__*/React.createElement("span", { style:{ fontSize:11, background:'rgba(0,229,160,.1)', color:'#00e5a0', padding:'1px 6px', borderRadius:4 } }, row.namaKelas),
+                  row.namaMapel && /*#__PURE__*/React.createElement("span", { style:{ fontSize:11, background:'rgba(167,139,250,.1)', color:'#a78bfa', padding:'1px 6px', borderRadius:4 } }, row.namaMapel),
+                  row.err && /*#__PURE__*/React.createElement("span", { style:{ fontSize:10, color:'#f87171' } }, row.err),
+                  row.raw && /*#__PURE__*/React.createElement("span", { style:{ fontSize:11, color:'#555' } }, row.raw)
+                );
+              })
+            ),
+            validCount > 0 && /*#__PURE__*/React.createElement("button", {
+              className: "btn-p",
+              onClick: handleImport,
+              style:{ marginTop:12, borderRadius:8, padding:'10px 22px', fontSize:13, width:'100%' }
+            }, /*#__PURE__*/React.createElement("i", { className:"fas fa-check-circle", style:{marginRight:8} }), "Import ", validCount, " Data Valid Sekarang")
+          ),
+
+          // HASIL IMPORT
+          result && /*#__PURE__*/React.createElement("div", { style:{ marginTop:14, background:'rgba(0,229,160,.06)', border:'1px solid rgba(0,229,160,.25)', borderRadius:10, padding:'14px 16px' } },
+            /*#__PURE__*/React.createElement("p", { style:{ fontFamily:'Exo 2', fontWeight:800, fontSize:14, color:'#00e5a0', marginBottom:10 } }, "✅ Import Berhasil!"),
+            /*#__PURE__*/React.createElement("div", { style:{ display:'flex', flexWrap:'wrap', gap:10 } },
+              [
+                { label:'Guru baru', val: result.guru, color:'#fbbf24' },
+                { label:'Kelas baru', val: result.kelas, color:'#00e5a0' },
+                { label:'Mapel baru', val: result.mapel, color:'#a78bfa' },
+                { label:'Tugas dibuat', val: result.tugas, color:'#00b8d4' },
+                result.skip > 0 && { label:'Duplikat skip', val: result.skip, color:'#555' }
+              ].filter(Boolean).map(function(s){ return /*#__PURE__*/React.createElement("div", { key:s.label, style:{ background:'#0d0d14', borderRadius:8, padding:'8px 14px', textAlign:'center', minWidth:90 } },
+                /*#__PURE__*/React.createElement("div", { style:{ fontSize:20, fontWeight:800, color:s.color, fontFamily:'Exo 2' } }, s.val),
+                /*#__PURE__*/React.createElement("div", { style:{ fontSize:10, color:'#666' } }, s.label)
+              ); })
+            )
+          )
+        ),
+
+        // ── TAB EXCEL ──
+        activeTab === 'excel' && /*#__PURE__*/React.createElement("div", null,
+
+          // Info template
+          /*#__PURE__*/React.createElement("div", { style:{ background:'rgba(0,184,212,.06)', border:'1px solid rgba(0,184,212,.2)', borderRadius:8, padding:'12px 14px', marginBottom:16 } },
+            /*#__PURE__*/React.createElement("p", { style:{ fontSize:12, fontWeight:700, color:'#00b8d4', marginBottom:8 } }, /*#__PURE__*/React.createElement("i", { className:"fas fa-info-circle", style:{marginRight:6} }), "Struktur File Excel"),
+            /*#__PURE__*/React.createElement("div", { style:{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 } },
+              [
+                { sheet:'Sheet: Guru', cols:'Nama Guru | NIP (opsional) | Jabatan (opsional)', color:'#fbbf24' },
+                { sheet:'Sheet: Kelas', cols:'Nama Kelas | Jam Masuk | Durasi JP | JP Istirahat | Dur. Istirahat', color:'#00e5a0' },
+                { sheet:'Sheet: Mapel', cols:'Nama Mata Pelajaran', color:'#a78bfa' },
+                { sheet:'Sheet: Tugas (opsional)', cols:'Nama Guru | Nama Kelas | Nama Mapel | JP per Minggu', color:'#00b8d4' }
+              ].map(function(s){ return /*#__PURE__*/React.createElement("div", { key:s.sheet, style:{ background:'#0d0d14', borderRadius:6, padding:'8px 10px' } },
+                /*#__PURE__*/React.createElement("p", { style:{ fontSize:11, fontWeight:700, color:s.color, marginBottom:4 } }, s.sheet),
+                /*#__PURE__*/React.createElement("p", { style:{ fontSize:10, color:'#666', lineHeight:1.5 } }, s.cols)
+              ); })
+            )
+          ),
+
+          // Download template
+          /*#__PURE__*/React.createElement("button", {
+            onClick: downloadTemplate,
+            style:{ display:'flex', alignItems:'center', gap:8, background:'rgba(0,229,160,.08)', border:'1px solid rgba(0,229,160,.3)', color:'#00e5a0', borderRadius:8, padding:'10px 16px', fontSize:12, fontWeight:700, cursor:'pointer', marginBottom:16, width:'100%', justifyContent:'center' }
+          }, /*#__PURE__*/React.createElement("i", { className:"fas fa-download" }), "⬇ Download Template Excel (.xlsx)"),
+
+          // Upload area
+          /*#__PURE__*/React.createElement("label", { style:{ display:'block', cursor:'pointer' } },
+            /*#__PURE__*/React.createElement("div", { style:{ border:'2px dashed #333', borderRadius:10, padding:'32px 20px', textAlign:'center', transition:'border-color .2s' },
+              onMouseOver:function(e){ e.currentTarget.style.borderColor='#00e5a0'; },
+              onMouseOut:function(e){ e.currentTarget.style.borderColor='#333'; }
+            },
+              loading
+                ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("i", { className:"fas fa-spinner fa-spin", style:{ fontSize:28, color:'#00e5a0', marginBottom:10, display:'block' } }), /*#__PURE__*/React.createElement("p", { style:{ color:'#888', fontSize:13 } }, "Memproses file..."))
+                : /*#__PURE__*/React.createElement("div", null,
+                    /*#__PURE__*/React.createElement("i", { className:"fas fa-file-excel", style:{ fontSize:32, color:'#22c55e', marginBottom:10, display:'block' } }),
+                    /*#__PURE__*/React.createElement("p", { style:{ fontSize:14, color:'#fff', fontWeight:700, marginBottom:4 } }, "Klik atau drag & drop file Excel di sini"),
+                    /*#__PURE__*/React.createElement("p", { style:{ fontSize:11, color:'#666' } }, "Format: .xlsx — Baris pertama setiap sheet dianggap header")
+                  )
+            ),
+            /*#__PURE__*/React.createElement("input", { type:'file', accept:'.xlsx,.xls', onChange:handleExcel, style:{ display:'none' } })
+          ),
+
+          // Hasil upload Excel
+          xlsxResult && /*#__PURE__*/React.createElement("div", { style:{ marginTop:14, background:'rgba(0,229,160,.06)', border:'1px solid rgba(0,229,160,.25)', borderRadius:10, padding:'14px 16px' } },
+            /*#__PURE__*/React.createElement("p", { style:{ fontFamily:'Exo 2', fontWeight:800, fontSize:14, color:'#00e5a0', marginBottom:6 } }, "✅ File Excel Berhasil Diimpor!"),
+            xlsxResult.sheets.length > 0 && /*#__PURE__*/React.createElement("p", { style:{ fontSize:11, color:'#888', marginBottom:10 } }, "Sheet diproses: ", xlsxResult.sheets.join(' • ')),
+            /*#__PURE__*/React.createElement("div", { style:{ display:'flex', flexWrap:'wrap', gap:10 } },
+              [
+                { label:'Guru baru', val: xlsxResult.guru, color:'#fbbf24' },
+                { label:'Kelas baru', val: xlsxResult.kelas, color:'#00e5a0' },
+                { label:'Mapel baru', val: xlsxResult.mapel, color:'#a78bfa' },
+                { label:'Tugas dibuat', val: xlsxResult.tugas, color:'#00b8d4' },
+                xlsxResult.skip > 0 && { label:'Duplikat skip', val: xlsxResult.skip, color:'#555' }
+              ].filter(Boolean).map(function(s){ return /*#__PURE__*/React.createElement("div", { key:s.label, style:{ background:'#0d0d14', borderRadius:8, padding:'8px 14px', textAlign:'center', minWidth:90 } },
+                /*#__PURE__*/React.createElement("div", { style:{ fontSize:20, fontWeight:800, color:s.color, fontFamily:'Exo 2' } }, s.val),
+                /*#__PURE__*/React.createElement("div", { style:{ fontSize:10, color:'#666' } }, s.label)
+              ); })
+            )
+          )
+        )
+      )
+    )
+  );
+});
+
 var TugasMengajar = memo(function (_ref6) {
   var _guru$, _mapel$, _kelas$;
   var kelas = _ref6.kelas,
@@ -2901,6 +3406,9 @@ var TugasMengajar = memo(function (_ref6) {
       className: "fas fa-pen"
     })), /*#__PURE__*/React.createElement("button", {
       onClick: function onClick() {
+        var _kNm = kelas.find(function (k) { return k.id === a.kelasId; });
+        var detailTugas = gName(a.guruId) + ' \u2014 ' + mName(a.mapelId) + ' (' + ((_kNm && _kNm.nama) || '\u2014') + ')';
+        if (!confirm('Hapus pembagian tugas ini?\n\n' + detailTugas + '\n\nJadwal yang terkait dengan tugas ini juga ikut terhapus. Tindakan ini tidak dapat dibatalkan.')) return;
         if (typeof pushUndoSnapshot === 'function') pushUndoSnapshot();
         return setAssignments(function (p) {
           return p.filter(function (x) {
@@ -10769,7 +11277,7 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
             : React.createElement('span',{style:{fontSize:12,color:'#ccc',flex:1,lineHeight:1.65,cursor:'text'},onClick:function(){setEditListIdx(key);setEditListVal(item);}},item),
           isEdit
             ? React.createElement('button',{onClick:function(){var nl=_toConsumableArray(list);nl[i]=editListVal;upd(field,nl);setEditListIdx(null);},style:{background:'rgba(0,229,160,.2)',border:'none',color:'#00e5a0',borderRadius:6,padding:'3px 10px',fontSize:12,cursor:'pointer',fontWeight:700,flexShrink:0}},'✓')
-            : React.createElement('button',{onClick:function(){upd(field,list.filter(function(_,j){return j!==i;}));},style:{background:'none',border:'none',color:'#2a2a3e',cursor:'pointer',fontSize:14,flexShrink:0,paddingTop:2},onMouseOver:function(e){e.currentTarget.style.color='#f87171';},onMouseOut:function(e){e.currentTarget.style.color='#2a2a3e';}},'✕')
+            : React.createElement('button',{onClick:function(){if(!confirm('Hapus poin ini?'))return;upd(field,list.filter(function(_,j){return j!==i;}));},style:{background:'none',border:'none',color:'#2a2a3e',cursor:'pointer',fontSize:14,flexShrink:0,paddingTop:2},onMouseOver:function(e){e.currentTarget.style.color='#f87171';},onMouseOut:function(e){e.currentTarget.style.color='#2a2a3e';}},'✕')
         );
       }),
       React.createElement('div',{style:{display:'flex',gap:8,marginTop:4}},
@@ -10797,7 +11305,7 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
           React.createElement('input',{id:inputId,type:'file',accept:'image/png,image/jpeg,image/webp,image/svg+xml',style:{display:'none'},onChange:function(e){ handleLogoUpload(field, e.target.files[0]); e.target.value=''; }}),
           React.createElement('button',{type:'button',onClick:function(){ document.getElementById(inputId).click(); },style:{background:'#161622',border:'1px solid #2a2a3e',color:'#00e5a0',borderRadius:7,padding:'7px 14px',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:"'Exo 2',sans-serif"}},
             React.createElement('i',{className:'fas fa-upload',style:{marginRight:6}}), val?'Ganti Logo':'Pilih Logo'),
-          val && React.createElement('button',{type:'button',onClick:function(){ upd(field,''); },style:{background:'none',border:'none',color:'#555',fontSize:10,cursor:'pointer',textAlign:'left',padding:0}},'✕ Hapus logo'),
+          val && React.createElement('button',{type:'button',onClick:function(){ if(!confirm('Hapus logo ini?'))return; upd(field,''); },style:{background:'none',border:'none',color:'#555',fontSize:10,cursor:'pointer',textAlign:'left',padding:0}},'✕ Hapus logo'),
           hint && React.createElement('p',{style:{fontSize:9,color:'#444',lineHeight:1.5,maxWidth:220}},hint)
         )
       )
@@ -11022,7 +11530,7 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
                     React.createElement('p',{style:{color:'#fb923c',fontSize:11,fontWeight:700,marginTop:2}},tt.jabatan),
                     tt.uraianTugas && React.createElement('p',{style:{color:'#666',fontSize:11,marginTop:3,lineHeight:1.5}},tt.uraianTugas)
                   ),
-                  React.createElement('button',{onClick:function(){setSKData(function(p){return Object.assign({},p,{tugasTambahan:p.tugasTambahan.filter(function(x){return x.id!==tt.id;})});});},style:{background:'none',border:'none',color:'#2a2a3e',cursor:'pointer',fontSize:13},onMouseOver:function(e){e.currentTarget.style.color='#f87171';},onMouseOut:function(e){e.currentTarget.style.color='#2a2a3e';}},
+                  React.createElement('button',{onClick:function(){if(!confirm('Hapus tugas tambahan ini?\n\n'+(gx?gx.nama:'\u2014')+' \u2014 '+tt.jabatan))return;setSKData(function(p){return Object.assign({},p,{tugasTambahan:p.tugasTambahan.filter(function(x){return x.id!==tt.id;})});});},style:{background:'none',border:'none',color:'#2a2a3e',cursor:'pointer',fontSize:13},onMouseOver:function(e){e.currentTarget.style.color='#f87171';},onMouseOut:function(e){e.currentTarget.style.color='#2a2a3e';}},
                     React.createElement('i',{className:'fas fa-trash'}))
                 );
               })
@@ -11609,6 +12117,260 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
 
 
 // ══════════════════════════════════════════════════════════
+// LIHAT JADWAL (READ-ONLY) — Per Kelas / Per Guru / Semua Kelas
+// ══════════════════════════════════════════════════════════
+var LihatJadwal = memo(function (_ref_lj) {
+  var akademik = _ref_lj.akademik,
+    kelas = _ref_lj.kelas,
+    guru = _ref_lj.guru,
+    mapel = _ref_lj.mapel,
+    jadwal = _ref_lj.jadwal,
+    assignments = _ref_lj.assignments,
+    slotConfig = _ref_lj.slotConfig,
+    isGenerated = _ref_lj.isGenerated,
+    settingGlobal = _ref_lj.settingGlobal;
+
+  var HARI = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+  var JP_MAX = 10;
+
+  var _useState_lj1 = useState('kelas'), _useState_lj2 = _slicedToArray(_useState_lj1, 2),
+    mode = _useState_lj2[0], setMode = _useState_lj2[1];
+  var sortedKelas = useMemo(function(){
+    return kelas.slice().sort(function (a, b) {
+      var parseK = function (nama) {
+        var m = (nama || '').match(/(\d+)\s*([A-Za-z]*)/);
+        return m ? [parseInt(m[1]) || 0, (m[2] || '').toUpperCase()] : [0, nama || ''];
+      };
+      var pa = parseK(a.nama), pb = parseK(b.nama);
+      if (pa[0] !== pb[0]) return pa[0] - pb[0];
+      return pa[1] < pb[1] ? -1 : pa[1] > pb[1] ? 1 : 0;
+    });
+  }, [kelas]);
+  var sortedGuru = useMemo(function(){
+    return guru.slice().sort(function(a,b){ return (a.nama||'').localeCompare(b.nama||''); });
+  }, [guru]);
+
+  var _useState_lj3 = useState((sortedKelas[0] && sortedKelas[0].id) || ''), _useState_lj4 = _slicedToArray(_useState_lj3, 2),
+    selKelas = _useState_lj4[0], setSelKelas = _useState_lj4[1];
+  var _useState_lj5 = useState((sortedGuru[0] && sortedGuru[0].id) || ''), _useState_lj6 = _slicedToArray(_useState_lj5, 2),
+    selGuru = _useState_lj6[0], setSelGuru = _useState_lj6[1];
+
+  var gName = function (id) { var g = guru.find(function (x) { return x.id === id; }); return g ? g.nama : '—'; };
+  var mName = function (id) { var m = mapel.find(function (x) { return x.id === id; }); return m ? m.nama : '—'; };
+  var isWaliKelas = function (guruId) { return kelas.some(function (k) { return k.waliKelasId === guruId; }); };
+
+  var maxJpUntukKelas = function (kId) {
+    var maxJp = 1;
+    if (slotConfig && slotConfig[kId]) {
+      HARI.forEach(function (h) {
+        for (var j = JP_MAX; j >= 1; j--) if (slotConfig[kId][h] && slotConfig[kId][h][j] && j > maxJp) maxJp = j;
+      });
+    }
+    return maxJp;
+  };
+  var maxJpUntukGuru = function (gId) {
+    var maxJp = 1;
+    var kelasGuru = _toConsumableArray(new Set(assignments.filter(function (a) { return a.guruId === gId; }).map(function (a) { return a.kelasId; })));
+    kelasGuru.forEach(function (kId) {
+      var m = maxJpUntukKelas(kId);
+      if (m > maxJp) maxJp = m;
+    });
+    return maxJp;
+  };
+
+  // Sel untuk mode KELAS: ambil langsung dari jadwal[kId][hari][jp]
+  var renderSelKelas = function (kId, hari, jp) {
+    var off = !(slotConfig && slotConfig[kId] && slotConfig[kId][hari] && slotConfig[kId][hari][jp]);
+    var ass = jadwal && jadwal[kId] && jadwal[kId][hari] && jadwal[kId][hari][jp];
+    if (off) return { jenis: 'off' };
+    if (ass && ass.isUpacara) return { jenis: 'upacara' };
+    if (!ass) return { jenis: 'kosong' };
+    return { jenis: 'isi', mapelNama: mName(ass.mapelId), guruNama: gName(ass.guruId), guruId: ass.guruId };
+  };
+
+  // Sel untuk mode GURU: cari di semua kelas, sel mana yang gurunya cocok pada hari+jp ini
+  var renderSelGuru = function (gId, hari, jp) {
+    var isUpacaraGlobal = kelas.some(function (k) {
+      var c = jadwal && jadwal[k.id] && jadwal[k.id][hari] && jadwal[k.id][hari][jp];
+      return c && c.isUpacara;
+    });
+    if (isUpacaraGlobal) return { jenis: 'upacara' };
+    var myTasks = [];
+    kelas.forEach(function (k) {
+      var c = jadwal && jadwal[k.id] && jadwal[k.id][hari] && jadwal[k.id][hari][jp];
+      if (c && !c.isUpacara && c.guruId === gId) myTasks.push({ kelasNama: k.nama, mapelNama: mName(c.mapelId) });
+    });
+    if (myTasks.length > 1) return { jenis: 'bentrok', tasks: myTasks };
+    if (myTasks.length === 1) return { jenis: 'isi', mapelNama: myTasks[0].mapelNama, kelasNama: myTasks[0].kelasNama };
+    return { jenis: 'kosong' };
+  };
+
+  var selStyle = {
+    borderRight: '1px solid #1e1e2e',
+    padding: 8,
+    verticalAlign: 'middle',
+    textAlign: 'center'
+  };
+
+  var renderCellContent = function (info, type) {
+    if (info.jenis === 'off') return React.createElement('td', { style: _objectSpread(_objectSpread({}, selStyle), { background: '#0a0a10', color: '#333', fontSize: 12 }) }, '—');
+    if (info.jenis === 'upacara') return React.createElement('td', { style: _objectSpread(_objectSpread({}, selStyle), { background: 'rgba(239,68,68,.08)' }) },
+      React.createElement('span', { style: { fontSize: 11, fontWeight: 900, color: '#f87171', letterSpacing: 1, fontFamily: 'Exo 2' } }, 'UPACARA')
+    );
+    if (info.jenis === 'kosong') return React.createElement('td', { style: _objectSpread(_objectSpread({}, selStyle), { background: '#0f0f16', color: '#333', fontSize: 11 }) }, '·');
+    if (info.jenis === 'bentrok') return React.createElement('td', { style: _objectSpread(_objectSpread({}, selStyle), { background: 'rgba(239,68,68,.12)' }) },
+      React.createElement('i', { className: 'fas fa-exclamation-triangle', style: { color: '#f87171', fontSize: 11, marginBottom: 3, display: 'block' } }),
+      info.tasks.map(function (t, ti) {
+        return React.createElement('div', { key: ti, style: { fontSize: 9, color: '#fca5a5', lineHeight: 1.4 } }, t.mapelNama + ' (' + t.kelasNama + ')');
+      })
+    );
+    // jenis: isi
+    return React.createElement('td', { style: _objectSpread(_objectSpread({}, selStyle), { background: 'rgba(0,229,160,.03)' }) },
+      React.createElement('span', { style: { display: 'block', fontSize: 13, fontWeight: 700, color: '#00e5a0', fontFamily: 'Exo 2', marginBottom: 3 } }, info.mapelNama),
+      type === 'kelas'
+        ? React.createElement('span', { style: { display: 'block', fontSize: 10, color: isWaliKelas(info.guruId) ? '#a78bfa' : '#777', fontWeight: isWaliKelas(info.guruId) ? 700 : 400 } }, info.guruNama)
+        : React.createElement('span', { style: { display: 'block', fontSize: 10, color: '#777' } }, info.kelasNama)
+    );
+  };
+
+  var renderTabelKelas = function (kId) {
+    var kObj = kelas.find(function (k) { return k.id === kId; });
+    if (!kObj) return null;
+    var maxJp = maxJpUntukKelas(kId);
+    return React.createElement('div', { key: kId, style: { marginBottom: 28 } },
+      React.createElement('div', {
+        style: { background: 'linear-gradient(135deg,#0f1f1a,#0f1525)', border: '1px solid rgba(0,229,160,.3)', borderBottom: 'none', borderTopLeftRadius: 12, borderTopRightRadius: 12, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }
+      },
+        React.createElement('span', { style: { fontFamily: 'Exo 2', fontWeight: 900, fontSize: 14, color: '#fff', textTransform: 'uppercase', letterSpacing: 1 } }, kObj.nama),
+        kObj.waliKelasId && React.createElement('span', { style: { fontSize: 11, color: '#a78bfa', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 } },
+          React.createElement('i', { className: 'fas fa-user-tie', style: { fontSize: 10 } }), gName(kObj.waliKelasId)
+        ),
+        React.createElement('span', { style: { fontSize: 11, color: '#555', marginLeft: 'auto' } }, kObj.jamMasuk + ' WIB · ' + kObj.durasiJp + ' mnt/JP')
+      ),
+      React.createElement('div', { style: { overflowX: 'auto', border: '1px solid #252535', borderTop: 'none', borderBottomLeftRadius: 12, borderBottomRightRadius: 12, background: '#161622' } },
+        React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', minWidth: 780, tableLayout: 'fixed' } },
+          React.createElement('thead', null, React.createElement('tr', { style: { background: '#0d0d14' } },
+            React.createElement('th', { style: { padding: '8px 6px', width: 70, borderRight: '1px solid #252535', borderBottom: '1px solid #252535', fontSize: 11, color: '#666', fontWeight: 700 } }, 'JP'),
+            HARI.map(function (h) { return React.createElement('th', { key: h, style: { padding: '8px 4px', borderRight: '1px solid #252535', borderBottom: '1px solid #252535', fontSize: 12, color: '#888', fontWeight: 700 } }, h); })
+          )),
+          React.createElement('tbody', null, Array.from({ length: maxJp }).map(function (_, i) {
+            var jp = i + 1;
+            return React.createElement('tr', { key: jp, style: { borderBottom: '1px solid #1e1e2e' } },
+              React.createElement('td', { style: { padding: '6px 4px', textAlign: 'center', background: '#111118', borderRight: '1px solid #252535', fontSize: 12, fontWeight: 700, color: '#aaa' } }, 'JP ' + jp),
+              HARI.map(function (hari) { return React.cloneElement(renderCellContent(renderSelKelas(kId, hari, jp), 'kelas'), { key: hari }); })
+            );
+          }))
+        )
+      )
+    );
+  };
+
+  var renderTabelGuru = function (gId) {
+    var gObj = guru.find(function (g) { return g.id === gId; });
+    if (!gObj) return null;
+    var maxJp = maxJpUntukGuru(gId);
+    var totalJp = 0;
+    HARI.forEach(function (h) { for (var j = 1; j <= maxJp; j++) { var info = renderSelGuru(gId, h, j); if (info.jenis === 'isi') totalJp++; else if (info.jenis === 'bentrok') totalJp += info.tasks.length; } });
+    return React.createElement('div', { key: gId, style: { marginBottom: 28 } },
+      React.createElement('div', {
+        style: { background: 'linear-gradient(135deg,#0f1f1a,#0f1525)', border: '1px solid rgba(0,229,160,.3)', borderBottom: 'none', borderTopLeftRadius: 12, borderTopRightRadius: 12, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }
+      },
+        React.createElement('span', { style: { fontFamily: 'Exo 2', fontWeight: 900, fontSize: 14, color: '#fff', textTransform: 'uppercase', letterSpacing: 1 } }, 'Jadwal Mengajar: ' + gObj.nama),
+        isWaliKelas(gId) && React.createElement('span', { style: { fontSize: 11, color: '#a78bfa', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 } },
+          React.createElement('i', { className: 'fas fa-user-tie', style: { fontSize: 10 } }), 'Wali Kelas'
+        ),
+        React.createElement('span', { style: { fontSize: 11, color: '#00e5a0', marginLeft: 'auto', fontWeight: 700 } }, totalJp + ' JP/minggu')
+      ),
+      React.createElement('div', { style: { overflowX: 'auto', border: '1px solid #252535', borderTop: 'none', borderBottomLeftRadius: 12, borderBottomRightRadius: 12, background: '#161622' } },
+        React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', minWidth: 1000, tableLayout: 'fixed' } },
+          React.createElement('thead', null, React.createElement('tr', { style: { background: '#0d0d14' } },
+            React.createElement('th', { style: { padding: '8px 6px', width: 70, borderRight: '1px solid #252535', borderBottom: '1px solid #252535', fontSize: 11, color: '#666', fontWeight: 700 } }, 'JP'),
+            HARI.map(function (h) { return React.createElement('th', { key: h, style: { padding: '8px 4px', borderRight: '1px solid #252535', borderBottom: '1px solid #252535', fontSize: 12, color: '#888', fontWeight: 700 } }, h); })
+          )),
+          React.createElement('tbody', null, Array.from({ length: maxJp }).map(function (_, i) {
+            var jp = i + 1;
+            return React.createElement('tr', { key: jp, style: { borderBottom: '1px solid #1e1e2e' } },
+              React.createElement('td', { style: { padding: '6px 4px', textAlign: 'center', background: '#111118', borderRight: '1px solid #252535', fontSize: 12, fontWeight: 700, color: '#aaa' } }, 'JP ' + jp),
+              HARI.map(function (hari) { return React.cloneElement(renderCellContent(renderSelGuru(gId, hari, jp), 'guru'), { key: hari }); })
+            );
+          }))
+        )
+      )
+    );
+  };
+
+  var modeBtn = function (id, label, icon) {
+    var active = mode === id;
+    return React.createElement('button', {
+      key: id,
+      onClick: function () { setMode(id); },
+      style: {
+        background: active ? 'rgba(0,229,160,.12)' : '#161622',
+        color: active ? '#00e5a0' : '#888',
+        border: active ? '1px solid rgba(0,229,160,.4)' : '1px solid #252535',
+        borderRadius: 8, padding: '8px 16px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: 8
+      }
+    }, React.createElement('i', { className: 'fas ' + icon }), label);
+  };
+
+  var selectStyle = {
+    background: '#0d0d14', color: '#fff', border: '1px solid #252535', borderRadius: 8,
+    padding: '8px 14px', fontSize: 12, fontWeight: 600, minWidth: 200
+  };
+
+  if (!isGenerated || !jadwal || Object.keys(jadwal).length === 0) {
+    return React.createElement('div', { style: { padding: '0 0 60px', fontFamily: "'Exo 2',sans-serif" } },
+      React.createElement('h2', { style: { fontSize: 18, fontWeight: 900, color: '#fff', marginBottom: 16 } },
+        React.createElement('i', { className: 'fas fa-eye', style: { color: '#00e5a0', marginRight: 10 } }), 'LIHAT JADWAL'
+      ),
+      React.createElement('div', { style: { textAlign: 'center', padding: '60px 20px', color: '#444' } },
+        React.createElement('i', { className: 'fas fa-calendar-times', style: { fontSize: 48, color: '#252535', marginBottom: 16, display: 'block' } }),
+        React.createElement('p', { style: { fontSize: 14, fontWeight: 700, color: '#555' } }, 'Jadwal belum dibuat'),
+        React.createElement('p', { style: { fontSize: 12, color: '#444', marginTop: 8 } }, 'Buat jadwal terlebih dahulu melalui Auto Generate, lalu kembali ke menu ini untuk melihatnya.')
+      )
+    );
+  }
+
+  return React.createElement('div', { style: { padding: '0 0 60px', fontFamily: "'Exo 2',sans-serif" } },
+    React.createElement('div', { style: { marginBottom: 20 } },
+      React.createElement('h2', { style: { fontSize: 18, fontWeight: 900, color: '#fff', margin: 0 } },
+        React.createElement('i', { className: 'fas fa-eye', style: { color: '#00e5a0', marginRight: 10 } }), 'LIHAT JADWAL'
+      ),
+      React.createElement('p', { style: { fontSize: 11, color: '#555', marginTop: 4 } }, 'Tampilan jadwal untuk dilihat saja — tidak dapat diedit di sini.')
+    ),
+    React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' } },
+      modeBtn('kelas', 'Per Kelas', 'fa-chalkboard'),
+      modeBtn('guru', 'Per Guru', 'fa-chalkboard-teacher'),
+      modeBtn('semua', 'Semua Kelas', 'fa-th-large')
+    ),
+    mode === 'kelas' && React.createElement('div', { style: { marginBottom: 20 } },
+      React.createElement('select', {
+        value: selKelas,
+        onChange: function (e) { setSelKelas(e.target.value); },
+        style: selectStyle
+      }, sortedKelas.map(function (k) { return React.createElement('option', { key: k.id, value: k.id }, k.nama); }))
+    ),
+    mode === 'guru' && React.createElement('div', { style: { marginBottom: 20 } },
+      React.createElement('select', {
+        value: selGuru,
+        onChange: function (e) { setSelGuru(e.target.value); },
+        style: selectStyle
+      }, sortedGuru.map(function (g) { return React.createElement('option', { key: g.id, value: g.id }, g.nama); }))
+    ),
+    mode === 'kelas' && selKelas && renderTabelKelas(selKelas),
+    mode === 'guru' && selGuru && renderTabelGuru(selGuru),
+    mode === 'semua' && sortedKelas.map(function (k) { return renderTabelKelas(k.id); }),
+    React.createElement('div', { style: { marginTop: 8, padding: '12px 16px', background: '#161622', border: '1px solid #252535', borderRadius: 10 } },
+      React.createElement('p', { style: { fontSize: 10, color: '#444', margin: 0, lineHeight: 1.7 } },
+        React.createElement('i', { className: 'fas fa-info-circle', style: { marginRight: 6, color: '#333' } }),
+        'Menu ini khusus untuk melihat jadwal. Untuk mengedit, gunakan menu "Hasil Jadwal". Untuk mencetak, gunakan tombol cetak di menu "Hasil Jadwal".'
+      )
+    )
+  );
+});
+
+// ══════════════════════════════════════════════════════════
 // ANALISIS BENTROK JADWAL
 // ══════════════════════════════════════════════════════════
 var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
@@ -11622,7 +12384,7 @@ var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
     settingGlobal = _ref_bentrok.settingGlobal,
     setTab = _ref_bentrok.setTab;
 
-  var HARI = ['Senin','Selasa','Rabu','Kamis','Jumat'];
+  var HARI = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
   var JP_MAX = 10;
 
   var _useState_b1 = useState('semua'), _useState_b2 = _slicedToArray(_useState_b1, 2),
@@ -11711,6 +12473,27 @@ var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
             'Buka "Hasil Jadwal", klik kelas ' + r.nama + ', isi slot tersebut secara manual',
             'Atau jalankan Auto Generate ulang agar slot terisi otomatis',
             'Jika slot tidak dipakai, nonaktifkan di menu "Ketersediaan Jam"'
+          ]
+        });
+      });
+
+      // JP TUNGGAL — mapel hanya 1 JP berdiri sendiri (terpisah) di satu hari, tidak boleh
+      r.errors.filter(function(e){ return e.startsWith('JP Tunggal:'); }).forEach(function(e) {
+        var mHari = e.match(/^JP Tunggal: (.+?) hanya 1 JP sendiri di hari (\S+) JP (\d+)\./);
+        var namaMapelJt = mHari ? mHari[1] : '?';
+        var hariJt = mHari ? mHari[2] : '?';
+        var jpJt = mHari ? mHari[3] : '?';
+        hasil.push({
+          id: ++idSeq, tipe: 'tunggal', label: 'JP Tunggal',
+          warna: '#eab308', warnaBg: 'rgba(234,179,8,.08)', icon: 'fa-puzzle-piece',
+          hari: hariJt, jp: jpJt,
+          judul: r.nama + ' — ' + namaMapelJt + ' hanya 1 JP sendiri pada ' + hariJt,
+          detail: 'Di kelas ' + r.nama + ', mapel ' + namaMapelJt + ' hanya dijadwalkan 1 JP sendirian (terpisah dari blok lain) pada hari ' + hariJt + ' JP' + jpJt + '. Mapel tidak boleh berdiri sendiri 1 JP — minimal 2 JP berurutan.',
+          kelasIds: [r.kId],
+          solusi: [
+            'Gabungkan slot ' + namaMapelJt + ' ini dengan slot ' + namaMapelJt + ' lain di hari yang sama agar jadi minimal 2 JP berurutan',
+            'Atau pindahkan slot tunggal ini ke hari lain yang sudah ada blok ' + namaMapelJt + '-nya, via menu "Tukar Jadwal"',
+            'Atau jalankan Auto Generate ulang dengan aturan blok minimal aktif'
           ]
         });
       });
@@ -11805,7 +12588,7 @@ var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
 
   // Hitung ringkasan
   var ringkasan = useMemo(function() {
-    var r = { guru:0, kosong:0, lebih:0, kurang:0, beruntun:0, tanpaguru:0 };
+    var r = { guru:0, kosong:0, lebih:0, kurang:0, beruntun:0, tunggal:0, tanpaguru:0 };
     deteksi.forEach(function(d){ if(r[d.tipe]!==undefined) r[d.tipe]++; });
     return r;
   }, [deteksi]);
@@ -11822,6 +12605,7 @@ var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
     { id:'kurang', label:'Kurang JP', warna:'#06b6d4', icon:'fa-minus-circle' },
     { id:'lebih', label:'Kelebihan JP', warna:'#a855f7', icon:'fa-layer-group' },
     { id:'beruntun', label:'Beruntun', warna:'#f97316', icon:'fa-sort-amount-down' },
+    { id:'tunggal', label:'JP Tunggal', warna:'#eab308', icon:'fa-puzzle-piece' },
     { id:'tanpaguru', label:'Tanpa Guru', warna:'#ec4899', icon:'fa-user-slash' },
   ];
 
@@ -11876,6 +12660,7 @@ var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
           { tipe:'kurang', label:'Kurang JP', warna:'#06b6d4', icon:'fa-minus-circle', val: ringkasan.kurang },
           { tipe:'lebih', label:'Lebih JP', warna:'#a855f7', icon:'fa-layer-group', val: ringkasan.lebih },
           { tipe:'beruntun', label:'Beruntun', warna:'#f97316', icon:'fa-sort-amount-down', val: ringkasan.beruntun },
+          { tipe:'tunggal', label:'JP Tunggal', warna:'#eab308', icon:'fa-puzzle-piece', val: ringkasan.tunggal },
           { tipe:'tanpaguru', label:'Tanpa Guru', warna:'#ec4899', icon:'fa-user-slash', val: ringkasan.tanpaguru },
         ].map(function(item) {
           return React.createElement('div', {
@@ -11980,7 +12765,7 @@ var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
 
                   // Tombol aksi
                   React.createElement('div', { style:{ display:'flex', gap:8, flexWrap:'wrap' } },
-                    (item.tipe === 'guru' || item.tipe === 'beruntun') && React.createElement('button', {
+                    (item.tipe === 'guru' || item.tipe === 'beruntun' || item.tipe === 'tunggal') && React.createElement('button', {
                       onClick: function(){ setTab('tukar'); },
                       style:{ background:'rgba(0,184,212,.15)', color:'#00b8d4', border:'1px solid rgba(0,184,212,.3)', padding:'7px 14px', borderRadius:7, fontSize:11, fontWeight:700, cursor:'pointer' }
                     }, React.createElement('i', { className:'fas fa-exchange-alt', style:{ marginRight:6 } }), 'Buka Tukar Jadwal'),
@@ -12006,7 +12791,7 @@ var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
       React.createElement('div', { style:{ marginTop:20, padding:'12px 16px', background:'#161622', border:'1px solid #252535', borderRadius:10 } },
         React.createElement('p', { style:{ fontSize:10, color:'#444', margin:0, lineHeight:1.7 } },
           React.createElement('i', { className:'fas fa-info-circle', style:{ marginRight:6, color:'#333' } }),
-          'Analisis ini mendeteksi: bentrok guru (1 guru di 2 kelas bersamaan), slot kosong (slot aktif tanpa mapel), kurang/lebih JP dari target, beruntun lebih dari 4 JP, dan mapel tanpa guru. Klik tiap masalah untuk melihat detail dan solusi.'
+          'Analisis ini mendeteksi: bentrok guru (1 guru di 2 kelas bersamaan), slot kosong (slot aktif tanpa mapel), kurang/lebih JP dari target, JP tunggal (mapel hanya 1 JP berdiri sendiri, tidak boleh), beruntun lebih dari 4 JP, dan mapel tanpa guru. Klik tiap masalah untuk melihat detail dan solusi.'
         )
       )
     )
@@ -12815,6 +13600,10 @@ var App = function App() {
       i: 'fa-calendar-alt',
       l: 'Hasil Jadwal'
     }, {
+      id: 'lihat',
+      i: 'fa-eye',
+      l: 'Lihat Jadwal'
+    }, {
       id: 'tukar',
       i: 'fa-exchange-alt',
       l: 'Tukar Jadwal'
@@ -13155,6 +13944,16 @@ var App = function App() {
     doRedo: doRedo,
     undoCount: undoCount,
     redoCount: redoCount
+  }), tab === 'lihat' && /*#__PURE__*/React.createElement(LihatJadwal, {
+    akademik: akademik,
+    kelas: kelas,
+    guru: guru,
+    mapel: mapel,
+    jadwal: jadwal,
+    assignments: assignments,
+    slotConfig: slotConfig,
+    isGenerated: isGenerated,
+    settingGlobal: settingGlobal
   }), tab === 'tukar' && /*#__PURE__*/React.createElement(TukarJadwal, {
     kelas: kelas,
     guru: guru,

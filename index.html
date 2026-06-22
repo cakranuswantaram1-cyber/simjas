@@ -6159,7 +6159,13 @@ var GridJadwal = memo(function (_ref1) {
           });
           return "<td class=\"td-mapel\"><span class=\"mn\">".concat(mNm(ass.mapelId), "</span><span class=\"gn").concat(isWaliCell ? ' gn-wali' : '', "\">").concat(gNm(ass.guruId), "</span></td>");
         }).join('');
+        var isIst3 = jp === parseInt(k.jpIstirahat || 4);
         rows += "<tr>\n          <td class=\"td-jp\"><div class=\"jp-num\">JP ".concat(jp, "</div><div class=\"jp-time\">").concat(waktu, "</div></td>\n          ").concat(cells, "\n        </tr>");
+        if (isIst3 && jp < maxJp) {
+          var durIst3 = parseInt(k.durasiIstirahat || 15);
+          var numCols3 = hariCetak.length + 1;
+          rows += "<tr><td colspan=\"".concat(numCols3, "\" style=\"background:#fff8e1;text-align:center;font-size:8pt;font-weight:700;color:#888;padding:4px 0;letter-spacing:2px;border-top:2px dashed #ccc;border-bottom:2px dashed #ccc;\">\u2615 ISTIRAHAT \xB7 ").concat(durIst3, " menit</td></tr>");
+        }
       };
       for (var jp = 1; jp <= maxJp; jp++) {
         _loop3(jp);
@@ -6645,6 +6651,23 @@ var GridJadwal = memo(function (_ref1) {
           return "<td class=\"td-empty\"></td>";
         }).join('');
         rows += "<tr><td class=\"td-jp\"><div class=\"jp-num\">JP ".concat(jp, "</div></td>").concat(cells, "</tr>");
+        // Cek apakah ada kelas yang istirahat setelah JP ini
+        var istAfterJp5 = guruKelas.some(function(kid5) {
+          var k5 = kelas.find(function(x){ return x.id === kid5; });
+          return k5 && parseInt(k5.jpIstirahat || 4) === jp;
+        });
+        if (istAfterJp5 && jp < maxJp) {
+          var numColsGuru = hariCetak.length + 1;
+          // ambil durasi dari kelas pertama yang cocok
+          var durIstGuru = (function() {
+            for (var gi = 0; gi < guruKelas.length; gi++) {
+              var kguru = kelas.find(function(x){ return x.id === guruKelas[gi]; });
+              if (kguru && parseInt(kguru.jpIstirahat || 4) === jp) return parseInt(kguru.durasiIstirahat || 15);
+            }
+            return 15;
+          })();
+          rows += "<tr><td colspan=\"".concat(numColsGuru, "\" style=\"background:#fff8e1;text-align:center;font-size:8pt;font-weight:700;color:#888;padding:4px 0;letter-spacing:2px;border-top:2px dashed #ccc;border-bottom:2px dashed #ccc;\">\u2615 ISTIRAHAT \xB7 ").concat(durIstGuru, " menit</td></tr>");
+        }
       };
       for (var jp = 1; jp <= maxJp; jp++) {
         _loop5(jp);
@@ -6923,6 +6946,15 @@ var GridJadwal = memo(function (_ref1) {
           });
         });
         dataRows.push(row);
+        // Tambah baris istirahat jika JP ini adalah JP istirahat
+        var istJp7 = parseInt(k.jpIstirahat || 4);
+        var durIst7 = parseInt(k.durasiIstirahat || 15);
+        if (jp === istJp7 && jp < maxJp) {
+          var sIst = S(font(8, true, '7A5C00'), fill('FFF8E1'), align('center', 'center'), {border:{top:{style:'thin',color:{rgb:'CCCCCC'}},bottom:{style:'thin',color:{rgb:'CCCCCC'}},left:{style:'thin',color:{rgb:'CCCCCC'}},right:{style:'thin',color:{rgb:'CCCCCC'}}}});
+          var istRow = [{v: '\u2615 ISTIRAHAT \xB7 '+durIst7+' menit', t:'s', s: sIst}];
+          for (var _ic = 1; _ic < totalCols; _ic++) istRow.push({v:'', t:'s', s: sIst});
+          dataRows.push(istRow);
+        }
       };
       for (var jp = 1; jp <= maxJp; jp++) {
         _loop7(jp);
@@ -6960,62 +6992,21 @@ var GridJadwal = memo(function (_ref1) {
       // Range
       ws['!ref'] = "A1:".concat(colLetters[totalCols - 1]).concat(allRows.length);
 
-      // Merge cells: baris judul, meta, spacer, footer
-      ws['!merges'] = [{
-        s: {
-          r: 0,
-          c: 0
-        },
-        e: {
-          r: 0,
-          c: totalCols - 1
-        }
-      },
-      // judul
-      {
-        s: {
-          r: 1,
-          c: 0
-        },
-        e: {
-          r: 1,
-          c: totalCols - 1
-        }
-      },
-      // meta
-      {
-        s: {
-          r: 2,
-          c: 0
-        },
-        e: {
-          r: 2,
-          c: totalCols - 1
-        }
-      },
-      // spacer atas
-      {
-        s: {
-          r: allRows.length - 2,
-          c: 0
-        },
-        e: {
-          r: allRows.length - 2,
-          c: totalCols - 1
-        }
-      },
-      // spacer bawah
-      {
-        s: {
-          r: allRows.length - 1,
-          c: 0
-        },
-        e: {
-          r: allRows.length - 1,
-          c: totalCols - 1
-        }
-      } // footer
+      // Merge cells: baris judul, meta, spacer, footer, dan baris istirahat
+      var merges7 = [
+        {s:{r:0,c:0},e:{r:0,c:totalCols-1}},  // judul
+        {s:{r:1,c:0},e:{r:1,c:totalCols-1}},  // meta
+        {s:{r:2,c:0},e:{r:2,c:totalCols-1}},  // spacer atas
+        {s:{r:allRows.length-2,c:0},e:{r:allRows.length-2,c:totalCols-1}},  // spacer bawah
+        {s:{r:allRows.length-1,c:0},e:{r:allRows.length-1,c:totalCols-1}}   // footer
       ];
+      // Tambah merge untuk setiap baris istirahat (identifikasi dari value sel pertama)
+      allRows.forEach(function(row, ri) {
+        if (row[0] && row[0].v && typeof row[0].v === 'string' && row[0].v.indexOf('ISTIRAHAT') !== -1) {
+          merges7.push({s:{r:ri,c:0},e:{r:ri,c:totalCols-1}});
+        }
+      });
+      ws['!merges'] = merges7;
 
       // Lebar kolom
       ws['!cols'] = [{
@@ -7031,34 +7022,13 @@ var GridJadwal = memo(function (_ref1) {
       })));
 
       // Tinggi baris
-      ws['!rows'] = [{
-        hpt: 32
-      },
-      // judul
-      {
-        hpt: 22
-      },
-      // meta
-      {
-        hpt: 6
-      },
-      // spacer
-      {
-        hpt: 20
-      }].concat(_toConsumableArray(dataRows.map(function () {
-        return {
-          hpt: 36
-        };
-      })), [
-      // baris data (lebih tinggi untuk 2 baris teks)
-      {
-        hpt: 6
-      },
-      // spacer bawah
-      {
-        hpt: 16
-      } // footer
-      ]);
+      var rowHeights7 = [{hpt:32},{hpt:22},{hpt:6},{hpt:20}]; // judul, meta, spacer, header
+      dataRows.forEach(function(row) {
+        var isIstRow = row[0] && row[0].v && typeof row[0].v === 'string' && row[0].v.indexOf('ISTIRAHAT') !== -1;
+        rowHeights7.push({hpt: isIstRow ? 18 : 36});
+      });
+      rowHeights7.push({hpt:6},{hpt:16}); // spacer bawah, footer
+      ws['!rows'] = rowHeights7;
       var safeName = k.nama.substring(0, 31).replace(/[\\/?*\[\]]/g, '_');
       XLSX.utils.book_append_sheet(wb, ws, safeName);
     });
@@ -7202,9 +7172,51 @@ var GridJadwal = memo(function (_ref1) {
           whiteSpace: 'nowrap'
         }
       }, h);
-    }))), /*#__PURE__*/React.createElement("tbody", null, Array.from({
-      length: maxJpClass
-    }).map(function (_, i) {
+    }))), /*#__PURE__*/React.createElement("tbody", null, (function(){
+      // Susun daftar baris: JP normal + baris istirahat disisipkan
+      // Hanya tampilkan istirahat kalau jpIstirahat memang di-set (bukan undefined/null/0)
+      var _istJp = null;
+      var _durIst = 15;
+      if (type === 'kelas' && kObj && kObj.jpIstirahat) {
+        _istJp = parseInt(kObj.jpIstirahat);
+        _durIst = parseInt(kObj.durasiIstirahat || 15);
+      } else if (type === 'guru') {
+        var _guruKlsIds = assignments.filter(function(a){ return a.guruId === id; }).map(function(a){ return a.kelasId; });
+        _guruKlsIds.forEach(function(kid) {
+          var _kx = kelas.find(function(k){ return k.id === kid; });
+          if (_kx && _kx.jpIstirahat) {
+            var _jp_ist = parseInt(_kx.jpIstirahat);
+            if (_istJp === null || _jp_ist < _istJp) { _istJp = _jp_ist; _durIst = parseInt(_kx.durasiIstirahat || 15); }
+          }
+        });
+      }
+      var _bodyRowDefs = [];
+      for (var _r = 1; _r <= maxJpClass; _r++) {
+        _bodyRowDefs.push({rtype:'jp', jp:_r});
+        if (_istJp && _r === _istJp && _r < maxJpClass) {
+          _bodyRowDefs.push({rtype:'ist', jp:_r, dur:_durIst});
+        }
+      }
+      return _bodyRowDefs.map(function(rowDef) {
+        if (rowDef.rtype === 'ist') {
+          return /*#__PURE__*/React.createElement("tr", {key: 'ist-'+rowDef.jp, style:{borderBottom:'1px solid #1e1e2e'}},
+            /*#__PURE__*/React.createElement("td", {
+              colSpan: HARI.length + 1,
+              style: {
+                background: 'rgba(245,158,11,.07)',
+                textAlign: 'center',
+                padding: '5px 0',
+                fontSize: 10,
+                fontWeight: 700,
+                color: '#b87c2a',
+                letterSpacing: 2,
+                borderTop: '1px dashed rgba(245,158,11,.25)',
+                borderBottom: '1px dashed rgba(245,158,11,.25)'
+              }
+            }, "\u2615 ISTIRAHAT \xB7 ", rowDef.dur, " menit")
+          );
+        }
+        var i = rowDef.jp - 1;
       return /*#__PURE__*/React.createElement("tr", {
         key: i + 1,
         style: {
@@ -7616,8 +7628,10 @@ var GridJadwal = memo(function (_ref1) {
             }
           }
         }
-      }));
-    })))));
+      })); 
+      }); // end _bodyRowDefs.map
+      }()) // end IIFE
+    ))));
   };
   var selStyle = {
     background: '#161622',
@@ -11203,6 +11217,30 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
         }));
       }
     });
+    // Urutkan: Wali Kelas dulu berdasarkan urutan kelas (1A,1B,...,6A,6B), baru Guru Mapel (tanpa wali) di bawah
+    var parseKelasUrut = function(namaKelas){
+      var m = (namaKelas || '').match(/(\d+)\s*([A-Za-z]*)/);
+      return m ? [parseInt(m[1]) || 0, (m[2] || '').toUpperCase()] : [999, namaKelas || ''];
+    };
+    var getKelasWaliInfo = function(g){
+      var kw = kelas.find(function(k){ return k.waliKelasId===g.id; });
+      if(kw) return parseKelasUrut(kw.nama);
+      // fallback: cek dari statusWali manual ("Wali Kelas 3A" dst) jika belum ke-link otomatis
+      var sw = skData.statusWali[g.id] || '';
+      var m = sw.match(/Wali Kelas\s+(.+)/i);
+      if(m) return parseKelasUrut(m[1]);
+      return null; // bukan wali kelas
+    };
+    hasil.sort(function(ga, gb){
+      var ia = getKelasWaliInfo(ga), ib = getKelasWaliInfo(gb);
+      if(ia && ib){
+        if(ia[0] !== ib[0]) return ia[0] - ib[0];
+        return ia[1] < ib[1] ? -1 : ia[1] > ib[1] ? 1 : 0;
+      }
+      if(ia && !ib) return -1; // wali kelas tampil duluan
+      if(!ia && ib) return 1;  // guru mapel (non-wali) di bawah
+      return 0; // dua-duanya guru mapel: pertahankan urutan asal
+    });
     return hasil;
   }, [guru, assignments, kelas, mapel, skData.tugasTambahan, skData.nuptkGuru, skData.statusWali]);
 
@@ -11628,7 +11666,7 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
       +'<p style="font-weight:bold;font-size:12pt;margin-bottom:6px;">Tembusan disampaikan kepada Yth. :</p>'
       +skData.tembusan.map(function(t,i){return '<p style="font-size:12pt;margin-bottom:2px;">'+(i+1)+'. '+t+';</p>';}).join('')
       +ttdHtml
-      +'<p class="footer-note">Dokumen dibuat dengan SIMJAS PRO — Sistem Manajemen Jadwal Sekolah</p>';
+      +'';
 
     // ── HALAMAN 2: LAMPIRAN I ──
     var rowsLamp1 = rekapGuru.length===0
@@ -11654,7 +11692,7 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
       +'</tr></thead><tbody>'+rowsLamp1+'</tbody>'
       +'<tfoot><tr style="background:#e8e8e8;"><td colspan="4" style="text-align:right;font-weight:bold;">TOTAL JAM TATAP MUKA PER MINGGU</td><td style="text-align:center;font-weight:bold;font-size:13pt;">'+totalJPSemua+' jam</td></tr></tfoot>'
       +'</table>'+ttdHtml
-      +'<p class="footer-note">Dokumen dibuat dengan SIMJAS PRO — Sistem Manajemen Jadwal Sekolah</p>';
+      +'';
 
     // ── HALAMAN 3: LAMPIRAN II ──
     var rowsLamp2 = skData.tugasTambahan.length===0
@@ -11674,7 +11712,7 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
       +'<th style="width:36px;">No.</th><th>Nama Guru</th><th>Tugas Tambahan / Jabatan</th><th>Uraian Tugas</th>'
       +'</tr></thead><tbody>'+rowsLamp2+'</tbody></table>'
       +ttdHtml
-      +'<p class="footer-note">Dokumen dibuat dengan SIMJAS PRO — Sistem Manajemen Jadwal Sekolah</p>';
+      +'';
 
     // ── HALAMAN 4: LAMPIRAN III — REKAPITULASI ──
     var rowsLamp3 = rekapGuru.length===0
@@ -11708,7 +11746,7 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
       +'</tr></thead><tbody>'+rowsLamp3+'</tbody></table>'
       +'<p style="font-size:10pt;color:#555;margin-top:14px;margin-bottom:20px;line-height:1.6;">* Ekuivalensi jam tugas tambahan mengacu pada Lampiran Permendikbud Nomor 15 Tahun 2018 tentang Pemenuhan Beban Kerja Guru, Kepala Sekolah, dan Pengawas Sekolah.</p>'
       +ttdHtml
-      +'<p class="footer-note">Dokumen dibuat dengan SIMJAS PRO — Sistem Manajemen Jadwal Sekolah</p>';
+      +'';
 
     // ── HALAMAN 5: LAMPIRAN IV — JADWAL MENGAJAR GURU (per guru, satu tabel Hari × JP) ──
     var guruDenganJadwal = rekapGuru.filter(function(g){ return jadwalPerGuru[g.id] && Object.keys(jadwalPerGuru[g.id]).length>0; });
@@ -11716,7 +11754,11 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
 
     var buatTabelJadwalGuru = function(g){
       var jadwalG = jadwalPerGuru[g.id]||{};
-      var theadCols = '<th style="width:55px;">JP</th>'+HARI_AKTIF.map(function(hari){ return '<th>'+hari+'</th>'; }).join('');
+      var colCount = HARI_AKTIF.length + 1;
+      var jpColPct = 8;
+      var hariColPct = ((100 - jpColPct) / HARI_AKTIF.length).toFixed(2);
+      var colgroupHtml = '<colgroup><col style="width:'+jpColPct+'%;">'+HARI_AKTIF.map(function(){ return '<col style="width:'+hariColPct+'%;">'; }).join('')+'</colgroup>';
+      var theadCols = '<th style="text-align:center;">JP</th>'+HARI_AKTIF.map(function(hari){ return '<th>'+hari+'</th>'; }).join('');
       var bodyRows = jpKolom.map(function(jp){
         var cellsJp = HARI_AKTIF.map(function(hari){
           var c = (jadwalG[hari]||{})[jp];
@@ -11727,7 +11769,7 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
       }).join('');
       return '<div style="margin-bottom:30px;">'
         +'<p style="font-weight:bold;font-size:11.5pt;margin-bottom:8px;">'+g.nama+(g.nuptk?'  <span style="font-weight:normal;font-size:10pt;color:#555;">— NUPTK. '+g.nuptk+'</span>':'')+'</p>'
-        +'<table class="tdata" style="margin-bottom:0;"><thead><tr style="background:#f0f0f0;">'+theadCols+'</tr></thead><tbody>'+bodyRows+'</tbody></table>'
+        +'<table class="tdata" style="margin-bottom:0;table-layout:fixed;">'+colgroupHtml+'<thead><tr style="background:#f0f0f0;">'+theadCols+'</tr></thead><tbody>'+bodyRows+'</tbody></table>'
         +'</div>';
     };
 
@@ -11743,7 +11785,6 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
           +(ciIdx>0?'<p style="font-size:10pt;color:#777;margin-bottom:18px;">(lanjutan)</p>':'')
           +chunk.map(buatTabelJadwalGuru).join('')
           +(ciIdx===chunks.length-1?ttdHtml:'')
-          +'<p class="footer-note">Dokumen dibuat dengan SIMJAS PRO — Sistem Manajemen Jadwal Sekolah</p>'
           +'</div>';
       }).join('');
     }
@@ -12558,7 +12599,115 @@ var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
       }
     });
 
-    // ── 3. MAPEL TANPA GURU ────────────────────────────────
+    // ── 3. MAPEL TERPOTONG ISTIRAHAT ──────────────────────
+    // Mapel yang sama muncul sebelum DAN sesudah istirahat di hari yang sama
+    // Pengecualian: PJOK / olahraga (nama mengandung 'pjok' atau 'olahraga' atau 'penjas')
+    kelas.forEach(function(k) {
+      var istJP = parseInt(k.jpIstirahat || 4); // JP terakhir sebelum istirahat
+      HARI.forEach(function(h) {
+        // Kumpulkan mapelId per blok (sebelum istirahat: JP 1..istJP, sesudah: JP istJP+1..JP_MAX)
+        var sebelum = {}, sesudah = {};
+        for (var j = 1; j <= JP_MAX; j++) {
+          var slotAktif = slotConfig && slotConfig[k.id] && slotConfig[k.id][h] && slotConfig[k.id][h][j];
+          if (!slotAktif) continue;
+          var cell = jadwal[k.id] && jadwal[k.id][h] && jadwal[k.id][h][j];
+          if (!cell || cell.isUpacara || !cell.mapelId) continue;
+          if (j <= istJP) {
+            if (!sebelum[cell.mapelId]) sebelum[cell.mapelId] = [];
+            sebelum[cell.mapelId].push(j);
+          } else {
+            if (!sesudah[cell.mapelId]) sesudah[cell.mapelId] = [];
+            sesudah[cell.mapelId].push(j);
+          }
+        }
+        // Cari mapel yang ada di kedua blok
+        Object.keys(sebelum).forEach(function(mId) {
+          if (!sesudah[mId]) return;
+          var namaMapel = mNama(mId).toLowerCase();
+          // Pengecualian PJOK / olahraga / penjas
+          var isPjok = namaMapel.indexOf('pjok') !== -1 || namaMapel.indexOf('olahraga') !== -1 || namaMapel.indexOf('penjas') !== -1 || namaMapel.indexOf('jasmani') !== -1;
+          if (isPjok) return;
+          var jpSebelum = sebelum[mId].join(',');
+          var jpSesudah = sesudah[mId].join(',');
+          hasil.push({
+            id: ++idSeq, tipe: 'terpotong', label: 'Terpotong Istirahat',
+            warna: '#f43f5e', warnaBg: 'rgba(244,63,94,.08)', icon: 'fa-cut',
+            hari: h, jp: jpSebelum + ' & ' + jpSesudah,
+            judul: mNama(mId) + ' di ' + kNama(k.id) + ' terpotong istirahat pada ' + h,
+            detail: 'Di kelas ' + kNama(k.id) + ', mapel ' + mNama(mId) + ' dijadwalkan di JP ' + jpSebelum + ' (sebelum istirahat) DAN JP ' + jpSesudah + ' (sesudah istirahat) pada hari ' + h + '. Mapel tidak boleh terpotong istirahat — harus berada di satu sisi saja (kecuali PJOK/Olahraga).',
+            kelasIds: [k.id],
+            solusi: [
+              'Pindahkan JP ' + jpSesudah + ' sesudah istirahat ke hari lain yang masih memiliki blok ' + mNama(mId) + '-nya',
+              'Atau gabungkan semua JP ' + mNama(mId) + ' hari ' + h + ' ke sebelum istirahat saja (JP 1–' + istJP + ')',
+              'Gunakan menu "Tukar Jadwal" → Geser ke Kosong untuk memindahkan otomatis'
+            ]
+          });
+        });
+      });
+    });
+
+    // ── 4. MAPEL TERPECAH DI HARI YANG SAMA ───────────────
+    // Mapel yang sama memiliki 2+ blok TIDAK berurutan di hari yang sama
+    // Contoh: Matematika JP1-2 dan JP7-8 di hari yang sama = PELANGGARAN
+    kelas.forEach(function(k) {
+      HARI.forEach(function(h) {
+        // Kumpulkan semua JP aktif per mapelId
+        var jpPerMapel = {};
+        for (var j = 1; j <= JP_MAX; j++) {
+          var slotAktif = slotConfig && slotConfig[k.id] && slotConfig[k.id][h] && slotConfig[k.id][h][j];
+          if (!slotAktif) continue;
+          var cell = jadwal[k.id] && jadwal[k.id][h] && jadwal[k.id][h][j];
+          if (!cell || cell.isUpacara || !cell.mapelId) continue;
+          if (!jpPerMapel[cell.mapelId]) jpPerMapel[cell.mapelId] = [];
+          jpPerMapel[cell.mapelId].push(j);
+        }
+        // Periksa tiap mapel: apakah JP-nya berurutan (satu blok) atau terpecah?
+        Object.keys(jpPerMapel).forEach(function(mId) {
+          var daftarJP = jpPerMapel[mId].sort(function(a,b){return a-b;});
+          if (daftarJP.length < 2) return; // 1 JP sudah ditangani tipe 'tunggal'
+          // Cek apakah berurutan — tapi toleransi jika selisih hanya 1 (istirahat di tengah)
+          // Cari "lompatan" yang bukan istirahat
+          var istJP = parseInt(k.jpIstirahat || 4);
+          var bloks = [], blokSaat = [daftarJP[0]];
+          for (var i = 1; i < daftarJP.length; i++) {
+            var prev = daftarJP[i-1], curr = daftarJP[i];
+            var lompat = curr - prev;
+            // Lompatan 1 = berurutan, lompatan 2 = mungkin terpotong istirahat (sudah ditangani di atas)
+            // Lompatan > 2 = pasti terpecah = pelanggaran
+            var istirahatDiTengah = (prev === istJP && curr === istJP + 1);
+            if (lompat === 1 || istirahatDiTengah) {
+              blokSaat.push(curr);
+            } else {
+              bloks.push(blokSaat);
+              blokSaat = [curr];
+            }
+          }
+          bloks.push(blokSaat);
+          // Jika ada lebih dari 1 blok yang terpisah jauh (lompatan > 2)
+          if (bloks.length > 1) {
+            var namaMapel = mNama(mId).toLowerCase();
+            var isPjok = namaMapel.indexOf('pjok') !== -1 || namaMapel.indexOf('olahraga') !== -1 || namaMapel.indexOf('penjas') !== -1 || namaMapel.indexOf('jasmani') !== -1;
+            if (isPjok) return;
+            var blokStr = bloks.map(function(b){ return 'JP ' + b.join('-'); }).join(' dan ');
+            hasil.push({
+              id: ++idSeq, tipe: 'terpecah', label: 'Mapel Terpecah',
+              warna: '#8b5cf6', warnaBg: 'rgba(139,92,246,.08)', icon: 'fa-object-ungroup',
+              hari: h, jp: daftarJP[0] + ' & ' + daftarJP[daftarJP.length-1],
+              judul: mNama(mId) + ' di ' + kNama(k.id) + ' terpecah jadi ' + bloks.length + ' blok pada ' + h,
+              detail: 'Di kelas ' + kNama(k.id) + ', mapel ' + mNama(mId) + ' dijadwalkan di ' + blokStr + ' pada hari ' + h + ' — tidak berurutan. Mapel harus berada dalam satu blok berurutan, tidak boleh dipecah jadi dua kelompok JP terpisah di hari yang sama.',
+              kelasIds: [k.id],
+              solusi: [
+                'Gabungkan semua JP ' + mNama(mId) + ' pada hari ' + h + ' menjadi satu blok berurutan',
+                'Atau pindahkan salah satu blok ke hari lain via menu "Tukar Jadwal"',
+                'Auto Generate ulang agar distribusi JP otomatis mematuhi aturan blok'
+              ]
+            });
+          }
+        });
+      });
+    });
+
+    // ── 5. MAPEL TANPA GURU ────────────────────────────────
     kelas.forEach(function(k) {
       HARI.forEach(function(h) {
         for (var j = 1; j <= JP_MAX; j++) {
@@ -12588,7 +12737,7 @@ var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
 
   // Hitung ringkasan
   var ringkasan = useMemo(function() {
-    var r = { guru:0, kosong:0, lebih:0, kurang:0, beruntun:0, tunggal:0, tanpaguru:0 };
+    var r = { guru:0, kosong:0, lebih:0, kurang:0, beruntun:0, tunggal:0, tanpaguru:0, terpotong:0, terpecah:0 };
     deteksi.forEach(function(d){ if(r[d.tipe]!==undefined) r[d.tipe]++; });
     return r;
   }, [deteksi]);
@@ -12607,6 +12756,8 @@ var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
     { id:'beruntun', label:'Beruntun', warna:'#f97316', icon:'fa-sort-amount-down' },
     { id:'tunggal', label:'JP Tunggal', warna:'#eab308', icon:'fa-puzzle-piece' },
     { id:'tanpaguru', label:'Tanpa Guru', warna:'#ec4899', icon:'fa-user-slash' },
+    { id:'terpotong', label:'Terpotong Istirahat', warna:'#f43f5e', icon:'fa-cut' },
+    { id:'terpecah', label:'Mapel Terpecah', warna:'#8b5cf6', icon:'fa-object-ungroup' },
   ];
 
   var totalMasalah = deteksi.length;
@@ -12662,6 +12813,8 @@ var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
           { tipe:'beruntun', label:'Beruntun', warna:'#f97316', icon:'fa-sort-amount-down', val: ringkasan.beruntun },
           { tipe:'tunggal', label:'JP Tunggal', warna:'#eab308', icon:'fa-puzzle-piece', val: ringkasan.tunggal },
           { tipe:'tanpaguru', label:'Tanpa Guru', warna:'#ec4899', icon:'fa-user-slash', val: ringkasan.tanpaguru },
+          { tipe:'terpotong', label:'Terpotong Istirahat', warnaBg:'rgba(244,63,94,.08)', warna:'#f43f5e', icon:'fa-cut', val: ringkasan.terpotong },
+          { tipe:'terpecah', label:'Mapel Terpecah', warnaBg:'rgba(139,92,246,.08)', warna:'#8b5cf6', icon:'fa-object-ungroup', val: ringkasan.terpecah },
         ].map(function(item) {
           return React.createElement('div', {
             key: item.tipe,
@@ -12765,7 +12918,7 @@ var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
 
                   // Tombol aksi
                   React.createElement('div', { style:{ display:'flex', gap:8, flexWrap:'wrap' } },
-                    (item.tipe === 'guru' || item.tipe === 'beruntun' || item.tipe === 'tunggal') && React.createElement('button', {
+                    (item.tipe === 'guru' || item.tipe === 'beruntun' || item.tipe === 'tunggal' || item.tipe === 'terpotong' || item.tipe === 'terpecah') && React.createElement('button', {
                       onClick: function(){ setTab('tukar'); },
                       style:{ background:'rgba(0,184,212,.15)', color:'#00b8d4', border:'1px solid rgba(0,184,212,.3)', padding:'7px 14px', borderRadius:7, fontSize:11, fontWeight:700, cursor:'pointer' }
                     }, React.createElement('i', { className:'fas fa-exchange-alt', style:{ marginRight:6 } }), 'Buka Tukar Jadwal'),
@@ -12791,7 +12944,7 @@ var BentrokAnalysis = function BentrokAnalysis(_ref_bentrok) {
       React.createElement('div', { style:{ marginTop:20, padding:'12px 16px', background:'#161622', border:'1px solid #252535', borderRadius:10 } },
         React.createElement('p', { style:{ fontSize:10, color:'#444', margin:0, lineHeight:1.7 } },
           React.createElement('i', { className:'fas fa-info-circle', style:{ marginRight:6, color:'#333' } }),
-          'Analisis ini mendeteksi: bentrok guru (1 guru di 2 kelas bersamaan), slot kosong (slot aktif tanpa mapel), kurang/lebih JP dari target, JP tunggal (mapel hanya 1 JP berdiri sendiri, tidak boleh), beruntun lebih dari 4 JP, dan mapel tanpa guru. Klik tiap masalah untuk melihat detail dan solusi.'
+          'Analisis ini mendeteksi: bentrok guru (1 guru di 2 kelas bersamaan), slot kosong (slot aktif tanpa mapel), kurang/lebih JP dari target, JP tunggal (mapel hanya 1 JP berdiri sendiri, tidak boleh), beruntun lebih dari 4 JP, mapel tanpa guru, terpotong istirahat (mapel yang sama ada di sebelum dan sesudah istirahat — kecuali PJOK/Olahraga), dan mapel terpecah (blok mapel tidak berurutan di hari yang sama). Klik tiap masalah untuk melihat detail dan solusi.'
         )
       )
     )
@@ -13211,7 +13364,12 @@ var App = function App() {
     settingGlobal = _useState110[0],
     setSettingGlobal = _useState110[1];
   var _useState111 = useState(function () {
-      return LS.get('kelas', DEFAULT_KELAS);
+      return LS.get('kelas', DEFAULT_KELAS).map(function(k){
+        // Migrasi: kelas lama mungkin tidak punya jpIstirahat/durasiIstirahat
+        if (!k.jpIstirahat) k.jpIstirahat = 4;
+        if (!k.durasiIstirahat) k.durasiIstirahat = 15;
+        return k;
+      });
     }),
     _useState112 = _slicedToArray(_useState111, 2),
     kelas = _useState112[0],

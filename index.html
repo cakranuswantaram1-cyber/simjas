@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>SIMJAS PRO v4.1 - Sistem Manajemen Jadwal</title>
+<title>SIMJAS PRO v4.2 - Sistem Manajemen Jadwal</title>
 <link rel="manifest" href="./manifest.json">
 <!-- Preconnect: percepat DNS+TLS untuk semua CDN -->
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
@@ -252,38 +252,160 @@ var LS = {
   }
 };
 
-// ATURAN JP KETAT V7 (Prioritas 3 JP)
-var makeChunks = function makeChunks(jp) {
-  if (jp <= 1) return [];
-  if (jp === 2) return [2];
-  if (jp === 3) return [3];
-  if (jp === 4) return [2, 2];
-  if (jp === 5) return [3, 2];
-  if (jp === 6) return [3, 3];
-  if (jp === 7) return [3, 2, 2];
-  if (jp === 8) return [3, 3, 2];
-  if (jp === 9) return [3, 3, 3];
-  if (jp === 10) return [3, 3, 2, 2];
-  var ch = [];
-  var r = jp;
-  while (r > 0) {
-    if (r >= 3) {
-      ch.push(3);
-      r -= 3;
-    } else if (r === 2) {
-      ch.push(2);
-      r -= 2;
-    } else if (r === 1) {
-      if (ch.length > 0 && ch[ch.length - 1] < 3) {
-        ch[ch.length - 1] += 1;
-        r = 0;
-      } else {
-        ch.push(2);
-        r = 0;
-      }
+// ---- ATURAN POSISI CHUNK-3 JP (berlaku untuk SEMUA chunk berukuran 3, baik dari mapel ----
+// ---- bertotal 3 JP maupun pecahan dari mapel ganjil 5/7/9 JP) -----------------------------
+//   - Kelas dengan jpIstirahat = 0 (tidak ada titik istirahat tengah hari)
+//     → BEBAS, blok-3 boleh di posisi manapun yang valid.
+//   - Kelas dengan jpIstirahat > 0 (punya istirahat tengah hari):
+//       - Senin   → HANYA boleh mulai persis setelah Upacara berakhir (JP 2, karena
+//                   Upacara selalu fixed 1 JP di JP 1), dan tidak boleh melewati istirahat.
+//       - Jumat/Sabtu → HANYA boleh mulai persis setelah istirahat (JP istJP+1).
+//       - Selasa/Rabu/Kamis → tidak ada posisi yang diizinkan untuk chunk-3.
+var getValidBlok3Starts = function getValidBlok3Starts(istJP, h, scH, JP_MAX) {
+  var starts = [];
+  var maxS = JP_MAX - 2;
+  var fitsSlotConfig = function(s) {
+    return scH && scH[s] && scH[s+1] && scH[s+2];
+  };
+  var crossesIstirahat = function(s) {
+    return istJP > 0 && s <= istJP && (s + 2) > istJP;
+  };
+  if (istJP === 0) {
+    // Kelas tanpa istirahat tengah hari → bebas di posisi manapun yang valid
+    for (var s = 1; s <= maxS; s++) {
+      if (!fitsSlotConfig(s)) continue;
+      starts.push(s);
+    }
+    return starts;
+  }
+  if (h === 'Senin') {
+    var sUpc = 2; // tepat setelah Upacara (Upacara selalu fixed di JP 1)
+    if (!crossesIstirahat(sUpc) && fitsSlotConfig(sUpc)) starts.push(sUpc);
+  } else if (h === 'Jumat' || h === 'Sabtu') {
+    var sIst = istJP + 1; // tepat setelah istirahat
+    if (sIst <= maxS && !crossesIstirahat(sIst) && fitsSlotConfig(sIst)) starts.push(sIst);
+  }
+  // Fallback: jika posisi resmi tidak ada (Selasa/Rabu/Kamis, atau posisi resmi tidak fit),
+  // izinkan posisi manapun yang tidak lintas istirahat dan slot aktif
+  if (starts.length === 0) {
+    for (var sf = 1; sf <= maxS; sf++) {
+      if (!fitsSlotConfig(sf)) continue;
+      if (crossesIstirahat(sf)) continue;
+      starts.push(sf);
     }
   }
+  return starts;
+};
+
+// ATURAN JP V10 — Isi Slot-3 Dulu, Baru Sisanya 2/4 (slot 3JP terbatas posisinya —
+// hanya boleh ditempatkan habis Upacara Senin, habis istirahat Jumat/Sabtu, atau bebas
+// jika kelas tidak punya istirahat tengah hari). Strategi pemecahan SEMUA total JP (kecuali
+// PJOK/isBlock) bersifat SLOT-AWARE dan dinamis saat generate:
+//   - SELAMA masih ada slot blok-3 KOSONG yang tersedia di kelas ini (di posisi yang
+//     diizinkan) DAN mapel ini masih punya sisa JP yang bisa dipecah jadi chunk-3 (sisa ≥ 3
+//     dan sisa-3 tetap genap/valid), maka SATU chunk-3 dipakai dulu untuk mapel ini.
+//   - SETELAH slot blok-3 kosong sudah habis/terisi semua, sisanya dipecah TANPA chunk-3,
+//     pakai kombinasi {2,4} saja (4 diprioritaskan dulu untuk meminimalkan jumlah chunk).
+// Tidak ada chunk berukuran 1, 5, 6+ — semua chunk individual selalu 2, 3, atau 4 JP.
+// makeChunks: pemecahan statis (fallback, dipakai HANYA saat slot-awareness benar-benar
+// tidak tersedia/diperlukan). Untuk JP yang punya kemungkinan chunk-3 (3,5,6,7,8,9,10),
+// kembalikan null supaya makeChunksSlotAware yang memutuskan saat generate.
+var makeChunks = function makeChunks(jp) {
+  if (jp <= 1) return []; // 1JP tidak bisa ditempatkan, abaikan
+  if (jp === 2) return [2];
+  if (jp === 4) return [2, 2];
+  if (jp === 3 || jp === 5 || jp === 6 || jp === 7 || jp === 8 || jp === 9 || jp === 10) {
+    return null; // slot-aware yang putuskan (lihat makeChunksSlotAware)
+  }
+  // Fallback umum (JP > 10, atau slot-aware tidak dipanggil): genap → semua 4 lalu sisa 2;
+  // ganjil → satu 3 lalu sisanya genap via 4/2
+  var ch = [];
+  var r = jp;
+  if (r % 2 === 1) { ch.push(3); r -= 3; }
+  while (r > 0) {
+    if (r >= 4) { ch.push(4); r -= 4; }
+    else { ch.push(2); r -= 2; }
+  }
   return ch;
+};
+// Hitung berapa slot blok-3 KOSONG yang tersedia saat ini untuk kelas kId, di posisi
+// yang diizinkan (lihat getValidBlok3Starts).
+function hitungBlok3Kosong(kId, nj_sim, slotConfig, JP_MAX, istJP) {
+  var HARI_ALL = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+  var blok3Count = 0;
+  HARI_ALL.forEach(function(h) {
+    var scH = slotConfig && slotConfig[kId] && slotConfig[kId][h];
+    if (!scH) return;
+    var validStarts = getValidBlok3Starts(istJP, h, scH, JP_MAX);
+    validStarts.forEach(function(s) {
+      var kosong = !(nj_sim[kId] && nj_sim[kId][h] && (nj_sim[kId][h][s] || nj_sim[kId][h][s+1] || nj_sim[kId][h][s+2]));
+      if (kosong) blok3Count++;
+    });
+  });
+  return blok3Count;
+}
+// makeChunksSlotAware: pemecahan dinamis untuk SEMUA total JP yang punya opsi chunk-3.
+// Prioritas: ISI slot blok-3 yang masih kosong dulu (selama tersedia), baru sisanya
+// dipecah tanpa chunk-3 (kombinasi {2,4}, prioritas 4 supaya jumlah chunk minimal).
+//
+// PERBEDAAN PENTING antara dua jenis kelas:
+//   - Kelas BEBAS (istJP === 0, tidak punya titik istirahat tengah hari): slot blok-3 di
+//     sini TIDAK langka (bisa puluhan posisi/minggu) — karena itu BOLEH memecah satu mapel
+//     genap (6, 8, 10 JP) jadi BEBERAPA chunk-3 sekaligus (mis. 6→[3,3], 8→[3,3,2]) selama
+//     slot blok-3 yang tersisa masih cukup, karena hal ini justru membantu (chunk-3 ganda
+//     lebih fleksibel ditempatkan daripada satu chunk besar 4 JP yang kaku & butuh 4 slot
+//     berurutan tanpa putus).
+//   - Kelas DENGAN ISTIRAHAT (istJP > 0): slot blok-3 SANGAT langka (biasanya hanya 3/minggu
+//     — Senin habis Upacara, Jumat & Sabtu habis istirahat). Di sini HEMAT slot blok-3 itu
+//     prioritas: mapel genap (6,8,10 JP) TIDAK memakai chunk-3 sama sekali (pakai {2,4} saja),
+//     mapel ganjil (5,7,9 JP) memakai TEPAT SATU chunk-3 saja (bukan lebih).
+var makeChunksSlotAware = function makeChunksSlotAware(jp, kId, nj_sim, slotConfig, JP_MAX, istJP) {
+  var blok3Kosong = hitungBlok3Kosong(kId, nj_sim, slotConfig, JP_MAX, istJP);
+  var ch = [];
+  var r = jp;
+  if (istJP === 0) {
+    // Kelas BEBAS: ambil chunk-3 sebanyak mungkin selama slot blok-3 masih ada DAN sisa
+    // setelahnya masih bisa diselesaikan validly (tidak boleh berakhir di sisa 1).
+    var sisaCadangan = blok3Kosong;
+    while (r >= 3 && sisaCadangan > 0) {
+      var sisaSetelah = r - 3;
+      // Jangan ambil chunk-3 jika itu akan menyisakan 1 JP yang tak bisa dipecah (sisa===1)
+      if (sisaSetelah === 1) break;
+      ch.push(3); r -= 3; sisaCadangan--;
+    }
+    if (r % 2 === 1) {
+      // Masih ganjil (kasus langka: cadangan habis duluan) — paksa 1 chunk-3 lagi
+      ch.push(3); r -= 3;
+    }
+  } else {
+    // Kelas DENGAN ISTIRAHAT: maksimal SATU chunk-3 per mapel, hanya jika benar2 diperlukan
+    // (ganjil) atau masih ada cadangan slot DAN sisa setelahnya genap valid.
+    var pakaiChunk3 = false;
+    if (blok3Kosong > 0) {
+      var sisaSetelah3 = jp - 3;
+      if (sisaSetelah3 === 0 || (sisaSetelah3 >= 2 && sisaSetelah3 % 2 === 0)) {
+        pakaiChunk3 = true;
+      }
+    }
+    if (pakaiChunk3) { ch.push(3); r -= 3; }
+    else if (r % 2 === 1) {
+      // JP ganjil: tidak ada cara lain memecah ganjil dengan {2,4} murni — wajib 1 chunk-3
+      // meski blok3Kosong=0 (backtracking yang menentukan berhasil/tidak).
+      ch.push(3); r -= 3;
+    }
+  }
+  while (r > 0) {
+    if (r >= 4) { ch.push(4); r -= 4; }
+    else { ch.push(2); r -= 2; }
+  }
+  return ch;
+};
+// Alias lama (backward compat) — signature SAMA seperti sebelumnya (tanpa parameter jp,
+// karena dulu fungsi ini KHUSUS untuk kasus 7 JP). Tetap dipertahankan agar pemanggilan
+// lama (jp===7) tidak perlu diubah; untuk JP lain pemanggil baru memanggil
+// makeChunksSlotAware(jp, ...) langsung.
+var makeChunks7 = function makeChunks7(kId, nj_sim, slotConfig, JP_MAX, istJP) {
+  return makeChunksSlotAware(7, kId, nj_sim, slotConfig, JP_MAX, (istJP === undefined ? 4 : istJP));
 };
 // Cek apakah penempatan blok (guruId, hari h, mulai JP s, panjang len) masih
 // sesuai kuota & preferensi guru (maks jam/hari, maks JP berurutan, rentang JP).
@@ -482,7 +604,7 @@ var Logo = memo(function (_ref) {
       letterSpacing: 2,
       fontFamily: 'Exo 2'
     }
-  }, "PRO v4.1")));
+  }, "PRO v4.2")));
 });
 
 // --- KOMPONEN VALIDASI REALTIME ---
@@ -4800,350 +4922,868 @@ var AutoGenerate = memo(function (_ref9) {
       return k.id === id;
     })) === null || _kelas$find4 === void 0 ? void 0 : _kelas$find4.nama) || id;
   };
-  var runGenerator = /*#__PURE__*/function () {
-    var _runGenerator = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
-      var nj_base, gt_base, chunksToPlace, guruClasses, assMap, targetAssignments, bestNj, minErrors, bestErrors, maxIterations, iter, nj_sim, gt_sim, errors_sim, iterChunks, i, j, _ref0, _i2, chunk, bestH, bestS, bestScore, days, _iterator, _step2, _guruOffDays$chunk$gu, h, hasSameMapel, _j, maxPagi, s, valid, _c, _slotConfig$chunk$kId, _slotConfig$chunk$kId2, _slotConfig$chunk$kId3, _slotConfig$chunk$kId4, _slotConfig$chunk$kId5, score, prevEmpty, prevPrevEmpty, nextEmpty, nextNextEmpty, c, historyEntry, _t;
-      return _regenerator().w(function (_context) {
-        while (1) switch (_context.p = _context.n) {
-          case 0:
-            if (akademik.tahunAjaran) {
-              _context.n = 1;
-              break;
-            }
-            alert("Harap lengkapi TAHUN AJARAN!");
-            setTab('akademik');
-            return _context.a(2);
-          case 1:
-            if (!(genMode !== 'semua' && genTarget.length === 0)) {
-              _context.n = 2;
-              break;
-            }
-            alert("Pilih minimal satu target generate (centang kotak yang tersedia)!");
-            return _context.a(2);
-          case 2:
-            setStatus('processing');
-            setLog('Inisialisasi Algoritma V7 (Hard Lock Upacara & Pengecekan Blok Utuh)...');
-            setProgress(5);
-            _context.n = 3;
-            return new Promise(function (r) {
-              return setTimeout(r, 50);
+  var runGenerator = function runGenerator() {
+    return new Promise(function (resolveOuter) {
+      setTimeout(function () {
+        if (!akademik.tahunAjaran) {
+          alert("Harap lengkapi TAHUN AJARAN!");
+          setTab('akademik');
+          resolveOuter();
+          return;
+        }
+        if (genMode !== 'semua' && genMode !== 'isi3' && genTarget.length === 0) {
+          alert("Pilih minimal satu target generate (centang kotak yang tersedia)!");
+          resolveOuter();
+          return;
+        }
+        setStatus('processing');
+        setLog(genMode === 'isi3' ? 'Smart Fill 3JP: Scan blok kosong & analisis chunk...' : 'Inisialisasi Algoritma V8 (True Backtracking & Most-Constrained-First)...');
+        setProgress(5);
+
+        setTimeout(function () {
+          // ===================== 1. SETUP GRID DASAR & KUNCI JADWAL =====================
+          var nj_base = genMode === 'semua' ? {} : JSON.parse(JSON.stringify(jadwal || {}));
+          var gt_base = {};
+          kelas.forEach(function (k) {
+            if (genMode === 'semua' || !nj_base[k.id]) nj_base[k.id] = {};
+            HARI.forEach(function (h) {
+              if (genMode === 'semua' || !nj_base[k.id][h]) nj_base[k.id][h] = {};
+              if (!gt_base[h]) gt_base[h] = {};
+              for (var jp = 1; jp <= JP_MAX; jp++) {
+                var isLocked = lockedSlots && lockedSlots[k.id] && lockedSlots[k.id][h] ? lockedSlots[k.id][h][jp] : false;
+                var shouldClear = false;
+                if (genMode === 'semua') shouldClear = true;
+                if (genMode === 'kelas' && genTarget.includes(k.id)) shouldClear = true;
+                if (genMode === 'guru') {
+                  var existingCellG = nj_base[k.id] && nj_base[k.id][h] ? nj_base[k.id][h][jp] : null;
+                  if (existingCellG && genTarget.includes(existingCellG.guruId)) shouldClear = true;
+                }
+                // Mode isi3: TIDAK clear — hanya isi slot kosong. Clear dilakukan setelah analisis blok-3.
+                if (isLocked) shouldClear = false;
+
+                var jamMasuk = k.jamMasuk ? k.jamMasuk.replace('.', ':') : '99:99';
+
+                // FORCE UPACARA (Kunci Paten Global Senin JP 1, hanya untuk kelas pagi)
+                if (h === 'Senin' && jp === 1 && slotConfig && slotConfig[k.id] && slotConfig[k.id]['Senin'] && slotConfig[k.id]['Senin'][1] && jamMasuk <= '08:00') {
+                  nj_base[k.id]['Senin'][1] = { isUpacara: true, mapelId: 'UPC' };
+                  shouldClear = false;
+                }
+                if (shouldClear) nj_base[k.id][h][jp] = null;
+                if (!gt_base[h][jp]) gt_base[h][jp] = {};
+                var existCell = nj_base[k.id] && nj_base[k.id][h] ? nj_base[k.id][h][jp] : null;
+                if (existCell && existCell.guruId) {
+                  gt_base[h][jp][existCell.guruId] = true;
+                }
+              }
             });
-          case 3:
-            nj_base = genMode === 'semua' ? {} : JSON.parse(JSON.stringify(jadwal || {}));
-            gt_base = {}; // 1. Setup Grid Dasar & Kunci Jadwal
-            kelas.forEach(function (k) {
-              if (genMode === 'semua' || !nj_base[k.id]) nj_base[k.id] = {};
-              HARI.forEach(function (h) {
-                if (genMode === 'semua' || !nj_base[k.id][h]) nj_base[k.id][h] = {};
-                if (!gt_base[h]) gt_base[h] = {};
-                for (var jp = 1; jp <= JP_MAX; jp++) {
-                  var _lockedSlots$k$id, _nj_base$k$id, _slotConfig$k$id2, _nj_base$k$id2;
-                  var isLocked = lockedSlots === null || lockedSlots === void 0 || (_lockedSlots$k$id = lockedSlots[k.id]) === null || _lockedSlots$k$id === void 0 || (_lockedSlots$k$id = _lockedSlots$k$id[h]) === null || _lockedSlots$k$id === void 0 ? void 0 : _lockedSlots$k$id[jp];
-                  var shouldClear = false;
-                  if (genMode === 'semua') shouldClear = true;
-                  if (genMode === 'kelas' && genTarget.includes(k.id)) shouldClear = true;
-                  if (genMode === 'guru' && genTarget.includes((_nj_base$k$id = nj_base[k.id]) === null || _nj_base$k$id === void 0 || (_nj_base$k$id = _nj_base$k$id[h]) === null || _nj_base$k$id === void 0 || (_nj_base$k$id = _nj_base$k$id[jp]) === null || _nj_base$k$id === void 0 ? void 0 : _nj_base$k$id.guruId)) shouldClear = true;
+          });
 
-                  // Jangan hapus yang dilock manual
-                  if (isLocked) shouldClear = false;
+          // ===================== ISI3: SMART FILL 3JP — DETERMINISTIK =====================
+          // Karena mapel 3JP selalu milik guru kelas/wali (tidak lintas kelas),
+          // tidak mungkin bentrok antar kelas → bisa di-fill deterministik tanpa backtracking.
+          //
+          // Alur:
+          //   STEP 1 — Clear semua slot mapel 3JP yang belum membentuk blok-3 utuh berurutan
+          //   STEP 2 — Untuk tiap kelas, scan blok-3 kosong; jika ada mapel non-3JP menghalangi → clear
+          //   STEP 3 — Pasangkan semua assignment 3JP yang belum lengkap ke blok-3 kosong (greedy, deterministic)
+          //   STEP 4 — Sisakan chunksToPlace hanya berisi assignment NON-3JP yang ter-clear (untuk dijadwal ulang)
+          var isi3ClearedAssIds = new Set(); // assignment non-3JP yang di-clear bloknya → dijadwal ulang oleh backtracking
+          // (getValidBlok3Starts sekarang didefinisikan di scope global, dekat makeChunks, supaya
+          //  bisa dipakai juga oleh makeChunksSlotAware saat chunking awal.)
 
-                  // Normalisasi jam masuk: ganti titik jadi titik dua, jika kosong anggap '99:99' (bukan pagi)
-                  var jamMasuk = k.jamMasuk ? k.jamMasuk.replace('.', ':') : '99:99';
+          if (genMode === 'isi3') {
 
-                  // FORCE UPACARA (Kunci Paten Global Senin JP 1, hanya untuk kelas pagi)
-                  if (h === 'Senin' && jp === 1 && slotConfig !== null && slotConfig !== void 0 && (_slotConfig$k$id2 = slotConfig[k.id]) !== null && _slotConfig$k$id2 !== void 0 && (_slotConfig$k$id2 = _slotConfig$k$id2['Senin']) !== null && _slotConfig$k$id2 !== void 0 && _slotConfig$k$id2[1] && jamMasuk <= '08:00') {
-                    nj_base[k.id]['Senin'][1] = {
-                      isUpacara: true,
-                      mapelId: 'UPC'
-                    };
-                    shouldClear = false;
+            // ---- STEP 1: Clear mapel 3JP yang tidak utuh / tidak berurutan ----
+            kelas.forEach(function(k) {
+              var scK = slotConfig && slotConfig[k.id];
+              if (!scK) return;
+              var kelasObj = kelas.find(function(kk){ return kk.id === k.id; });
+              var istJP = parseInt((kelasObj && kelasObj.jpIstirahat) || 4, 10);
+              assignments.filter(function(a){ return a.kelasId === k.id && a.jp === 3; }).forEach(function(ass) {
+                // Kumpulkan posisi slot yang terisi oleh mapel ini
+                var posisi = [];
+                HARI.forEach(function(h) {
+                  for (var jp = 1; jp <= JP_MAX; jp++) {
+                    var cell = nj_base[k.id] && nj_base[k.id][h] ? nj_base[k.id][h][jp] : null;
+                    if (cell && cell.mapelId === ass.mapelId) posisi.push({ h: h, jp: jp });
                   }
-                  if (shouldClear) nj_base[k.id][h][jp] = null;
-                  if (!gt_base[h][jp]) gt_base[h][jp] = {};
-                  var existCell = (_nj_base$k$id2 = nj_base[k.id]) === null || _nj_base$k$id2 === void 0 || (_nj_base$k$id2 = _nj_base$k$id2[h]) === null || _nj_base$k$id2 === void 0 ? void 0 : _nj_base$k$id2[jp];
-                  if (existCell && existCell.guruId) {
-                    gt_base[h][jp][existCell.guruId] = true;
+                });
+                if (posisi.length === 0) return; // belum ada → akan diisi di STEP 3
+                // Cek apakah sudah membentuk blok-3 utuh berurutan, di POSISI yang diizinkan
+                var byHari = {};
+                posisi.forEach(function(p){ if(!byHari[p.h]) byHari[p.h]=[]; byHari[p.h].push(p.jp); });
+                var sudahUtuh = Object.keys(byHari).some(function(h) {
+                  var jps = byHari[h].sort(function(a,b){return a-b;});
+                  if (jps.length !== 3) return false;
+                  var berurutan = (jps[1]===jps[0]+1 && jps[2]===jps[1]+1);
+                  if (!berurutan) return false;
+                  var scH = scK[h];
+                  var validStarts = getValidBlok3Starts(istJP, h, scH, JP_MAX);
+                  return validStarts.indexOf(jps[0]) !== -1;
+                });
+                if (sudahUtuh) return; // ✓ sudah benar & di posisi yang diizinkan, biarkan
+                // Belum utuh → clear semua slot, akan diisi ulang di STEP 3
+                var adaLocked = posisi.some(function(p){
+                  return lockedSlots && lockedSlots[k.id] && lockedSlots[k.id][p.h] && lockedSlots[k.id][p.h][p.jp];
+                });
+                if (adaLocked) return; // ada locked → jangan ganggu
+                posisi.forEach(function(p) {
+                  var cell2 = nj_base[k.id] && nj_base[k.id][p.h] ? nj_base[k.id][p.h][p.jp] : null;
+                  if (!cell2) return;
+                  if (cell2.guruId && gt_base[p.h] && gt_base[p.h][p.jp]) delete gt_base[p.h][p.jp][cell2.guruId];
+                  nj_base[k.id][p.h][p.jp] = null;
+                });
+              });
+            });
+
+            // ---- STEP 2: Bebaskan blok-3 yang diblokir mapel non-3JP ----
+            // Jika ada blok-3 slot kosong yang sebagian terisi oleh mapel non-3JP,
+            // keluarkan mapel itu agar blok bisa dipakai mapel 3JP
+            kelas.forEach(function(k) {
+              var scK = slotConfig && slotConfig[k.id];
+              if (!scK) return;
+              var kelasObj = kelas.find(function(kk){ return kk.id === k.id; });
+              var istJP = parseInt((kelasObj && kelasObj.jpIstirahat) || 4, 10);
+              // Hitung berapa chunk-3 yang masih dibutuhkan kelas ini
+              var need3 = 0;
+              assignments.filter(function(a){ return a.kelasId === k.id; }).forEach(function(a) {
+                var terisi = 0;
+                HARI.forEach(function(h){
+                  for(var jp=1;jp<=JP_MAX;jp++){
+                    var c=nj_base[k.id]&&nj_base[k.id][h]?nj_base[k.id][h][jp]:null;
+                    if(c&&c.mapelId===a.mapelId) terisi++;
                   }
+                });
+                var sisa = a.jp - terisi;
+                if (sisa <= 0) return;
+                var chunks = makeChunks(sisa);
+                if (chunks === null) chunks = makeChunksSlotAware(sisa, k.id, nj_base, slotConfig, JP_MAX, istJP);
+                if (chunks) chunks.forEach(function(c){ if(c===3) need3++; });
+                else need3 += 1;
+              });
+              if (need3 === 0) return;
+              HARI.forEach(function(h) {
+                var scH = scK[h];
+                if (!scH) return;
+                // Scan HANYA posisi blok-3 yang diizinkan (habis Upacara / Jumat-Sabtu habis istirahat / bebas jika tanpa istirahat)
+                var validStarts = getValidBlok3Starts(istJP, h, scH, JP_MAX);
+                validStarts.forEach(function(s) {
+                  if (need3 <= 0) return;
+                  var c1 = nj_base[k.id]&&nj_base[k.id][h] ? nj_base[k.id][h][s]   : null;
+                  var c2 = nj_base[k.id]&&nj_base[k.id][h] ? nj_base[k.id][h][s+1] : null;
+                  var c3 = nj_base[k.id]&&nj_base[k.id][h] ? nj_base[k.id][h][s+2] : null;
+                  if (!c1 && !c2 && !c3) { need3--; return; } // kosong → OK
+                  // Cek apakah ini blok-3JP yang sudah utuh (mapel sama, JP=3) → biarkan
+                  if (c1 && c2 && c3 && c1.mapelId && c1.mapelId===c2.mapelId && c2.mapelId===c3.mapelId) {
+                    var assBlok = assignments.find(function(a){ return a.kelasId===k.id && a.mapelId===c1.mapelId; });
+                    if (assBlok && assBlok.jp === 3) { return; } // sudah utuh → skip
+                  }
+                  // Ada mapel non-3JP di blok ini → keluarkan (jika tidak locked)
+                  var slots3 = [c1,c2,c3], jps3 = [s,s+1,s+2], cleared3 = false;
+                  for (var si = 0; si < 3; si++) {
+                    if (!slots3[si] || slots3[si].isUpacara) continue;
+                    var jpX = jps3[si];
+                    var isLk = lockedSlots&&lockedSlots[k.id]&&lockedSlots[k.id][h]&&lockedSlots[k.id][h][jpX];
+                    if (!isLk) {
+                      var cAss = assignments.find(function(a){ return a.kelasId===k.id && a.mapelId===slots3[si].mapelId; });
+                      if (cAss) isi3ClearedAssIds.add(cAss.id);
+                      if (slots3[si].guruId && gt_base[h]&&gt_base[h][jpX]) delete gt_base[h][jpX][slots3[si].guruId];
+                      nj_base[k.id][h][jpX] = null;
+                      cleared3 = true;
+                    }
+                  }
+                  if (cleared3) { need3--; }
+                });
+              });
+            });
+
+            // ---- STEP 3: Pasangkan assignment 3JP ke blok-3 kosong (deterministik) ----
+            // Karena guru 3JP = guru kelas (tidak lintas kelas), tidak perlu cek bentrok antar kelas.
+            // Cukup cek: gurunya tidak mengajar di slot yang sama di kelas lain (gt_base),
+            // dan slot tidak locked.
+            kelas.forEach(function(k) {
+              var scK = slotConfig && slotConfig[k.id];
+              if (!scK) return;
+              var kelasObj = kelas.find(function(kk){ return kk.id === k.id; });
+              var istJP = parseInt((kelasObj && kelasObj.jpIstirahat) || 4, 10);
+              // Ambil semua assignment 3JP di kelas ini yang belum lengkap
+              var ass3List = assignments.filter(function(a) {
+                if (a.kelasId !== k.id || a.jp !== 3) return false;
+                var terisi = 0;
+                HARI.forEach(function(h){
+                  for(var jp=1;jp<=JP_MAX;jp++){
+                    var c=nj_base[k.id]&&nj_base[k.id][h]?nj_base[k.id][h][jp]:null;
+                    if(c&&c.mapelId===a.mapelId) terisi++;
+                  }
+                });
+                return terisi < 3; // belum lengkap
+              });
+              if (ass3List.length === 0) return;
+              // Untuk setiap assignment 3JP, cari blok-3 kosong yang cocok dan langsung pasang
+              ass3List.forEach(function(ass) {
+                var terpasang = false;
+                HARI.forEach(function(h) {
+                  if (terpasang) return;
+                  var scH = scK[h];
+                  if (!scH) return;
+                  if (guruOffDays && guruOffDays[ass.guruId] && guruOffDays[ass.guruId][h]) return;
+                  var validStarts = getValidBlok3Starts(istJP, h, scH, JP_MAX);
+                  for (var vi = 0; vi < validStarts.length; vi++) {
+                    var s = validStarts[vi];
+                    // Semua 3 slot harus kosong
+                    var c1=nj_base[k.id][h][s], c2=nj_base[k.id][h][s+1], c3=nj_base[k.id][h][s+2];
+                    if (c1||c2||c3) continue;
+                    // Slot tidak locked
+                    var lk = lockedSlots&&lockedSlots[k.id]&&lockedSlots[k.id][h];
+                    if (lk&&(lk[s]||lk[s+1]||lk[s+2])) continue;
+                    // Guru tidak bentrok (cek gt_base — meski jarang, tetap safe)
+                    var gurBentrok = (gt_base[h]&&gt_base[h][s]&&gt_base[h][s][ass.guruId]) ||
+                                     (gt_base[h]&&gt_base[h][s+1]&&gt_base[h][s+1][ass.guruId]) ||
+                                     (gt_base[h]&&gt_base[h][s+2]&&gt_base[h][s+2][ass.guruId]);
+                    if (gurBentrok) continue;
+                    // ✓ PASANG langsung
+                    var cell3 = { id: ass.id, mapelId: ass.mapelId, guruId: ass.guruId };
+                    nj_base[k.id][h][s]   = cell3;
+                    nj_base[k.id][h][s+1] = cell3;
+                    nj_base[k.id][h][s+2] = cell3;
+                    if (!gt_base[h][s])   gt_base[h][s]   = {};
+                    if (!gt_base[h][s+1]) gt_base[h][s+1] = {};
+                    if (!gt_base[h][s+2]) gt_base[h][s+2] = {};
+                    gt_base[h][s][ass.guruId]   = true;
+                    gt_base[h][s+1][ass.guruId] = true;
+                    gt_base[h][s+2][ass.guruId] = true;
+                    terpasang = true;
+                    break;
+                  }
+                });
+                // STEP 3b: Jika masih belum terpasang, coba paksa bersihkan blok-3 yang
+                // terisi mapel non-locked non-3JP, lalu pasang assignment ini di sana.
+                // Mapel yang di-clear masuk isi3ClearedAssIds agar dijadwal ulang.
+                if (!terpasang) {
+                  HARI.forEach(function(h) {
+                    if (terpasang) return;
+                    var scH = scK[h];
+                    if (!scH) return;
+                    if (guruOffDays && guruOffDays[ass.guruId] && guruOffDays[ass.guruId][h]) return;
+                    var validStarts = getValidBlok3Starts(istJP, h, scH, JP_MAX);
+                    for (var vi = 0; vi < validStarts.length; vi++) {
+                      var s = validStarts[vi];
+                      var lk = lockedSlots && lockedSlots[k.id] && lockedSlots[k.id][h];
+                      if (lk && (lk[s] || lk[s+1] || lk[s+2])) continue;
+                      var c1=nj_base[k.id][h][s], c2=nj_base[k.id][h][s+1], c3=nj_base[k.id][h][s+2];
+                      // Jika ada yang upacara → skip
+                      if ((c1&&c1.isUpacara)||(c2&&c2.isUpacara)||(c3&&c3.isUpacara)) continue;
+                      // Guru yang menempati blok ini tidak boleh sama dengan ass.guruId (bentrok diri sendiri)
+                      var slotsArr = [
+                        {cell:c1, jp:s}, {cell:c2, jp:s+1}, {cell:c3, jp:s+2}
+                      ];
+                      // Clear semua yang tidak locked
+                      var clearedOk = true;
+                      slotsArr.forEach(function(sl) {
+                        if (!sl.cell) return; // sudah kosong, tidak perlu clear
+                        if (lockedSlots&&lockedSlots[k.id]&&lockedSlots[k.id][h]&&lockedSlots[k.id][h][sl.jp]) {
+                          clearedOk = false; return;
+                        }
+                        // Tandai assignment yang di-clear untuk dijadwal ulang
+                        var cAss2 = assignments.find(function(a){ return a.kelasId===k.id && a.mapelId===sl.cell.mapelId; });
+                        if (cAss2 && cAss2.jp !== 3) isi3ClearedAssIds.add(cAss2.id);
+                        if (sl.cell.guruId && gt_base[h] && gt_base[h][sl.jp]) delete gt_base[h][sl.jp][sl.cell.guruId];
+                        nj_base[k.id][h][sl.jp] = null;
+                      });
+                      if (!clearedOk) continue;
+                      // Cek bentrok guru setelah clear
+                      var gurBentrokForce = (gt_base[h]&&gt_base[h][s]&&gt_base[h][s][ass.guruId]) ||
+                                            (gt_base[h]&&gt_base[h][s+1]&&gt_base[h][s+1][ass.guruId]) ||
+                                            (gt_base[h]&&gt_base[h][s+2]&&gt_base[h][s+2][ass.guruId]);
+                      if (gurBentrokForce) continue;
+                      // Pasang
+                      var cell3c = { id: ass.id, mapelId: ass.mapelId, guruId: ass.guruId };
+                      nj_base[k.id][h][s]   = cell3c;
+                      nj_base[k.id][h][s+1] = cell3c;
+                      nj_base[k.id][h][s+2] = cell3c;
+                      if (!gt_base[h][s])   gt_base[h][s]   = {};
+                      if (!gt_base[h][s+1]) gt_base[h][s+1] = {};
+                      if (!gt_base[h][s+2]) gt_base[h][s+2] = {};
+                      gt_base[h][s][ass.guruId]   = true;
+                      gt_base[h][s+1][ass.guruId] = true;
+                      gt_base[h][s+2][ass.guruId] = true;
+                      terpasang = true;
+                      break;
+                    }
+                  });
+                }
+                // Jika masih belum terpasang juga, tandai untuk backtracking
+                if (!terpasang) {
+                  isi3ClearedAssIds.add(ass.id);
                 }
               });
             });
-            setLog('Memproses Pengelompokan (Chunks) & Aturan Satu Blok...');
-            setProgress(20);
-            _context.n = 4;
-            return new Promise(function (r) {
-              return setTimeout(r, 50);
-            });
-          case 4:
-            chunksToPlace = [];
-            guruClasses = {};
-            assMap = {};
+          }
+
+          setLog('Memproses Pengelompokan (Chunks) & Aturan Satu Blok...');
+          setProgress(15);
+
+          setTimeout(function () {
+            // ===================== 2. BANGUN DAFTAR CHUNK =====================
+            var chunksToPlace = [];
+            var guruClasses = {};
+            var assMap = {};
             assignments.forEach(function (a) {
               if (!guruClasses[a.guruId]) guruClasses[a.guruId] = new Set();
               guruClasses[a.guruId].add(a.kelasId);
               assMap[a.id] = a.jp;
             });
-            targetAssignments = assignments.filter(function (ass) {
+            // Peta wali kelas: guruId -> Set kelasId tempat ia jadi wali
+            // Chunk yang guru-nya adalah wali di kelas itu = isWaliKelas true -> paling akhir
+            var waliKelasMap = {};
+            kelas.forEach(function (k) {
+              if (k.waliKelasId) {
+                if (!waliKelasMap[k.waliKelasId]) waliKelasMap[k.waliKelasId] = new Set();
+                waliKelasMap[k.waliKelasId].add(k.id);
+              }
+            });
+            var targetAssignments = assignments.filter(function (ass) {
               if (genMode === 'semua') return true;
               if (genMode === 'kelas') return genTarget.includes(ass.kelasId);
               if (genMode === 'guru') return genTarget.includes(ass.guruId) && (genGuruKelas.length === 0 || genGuruKelas.includes(ass.kelasId));
+              if (genMode === 'isi3') return true; // isi3: semua assignment, tapi hanya yg punya chunk 3JP
               return false;
             });
+            // Helper: deteksi mapel PJOK/Olahraga/Penjas (nama mengandung salah satu kata kunci ini)
+            var isPjokMapel = function (mapelId) {
+              var m = mapel.find(function (mm) { return mm.id === mapelId; });
+              var nama = (m && m.nama ? m.nama : '').toLowerCase();
+              return nama.indexOf('pjok') !== -1 || nama.indexOf('olahraga') !== -1 || nama.indexOf('penjas') !== -1 || nama.indexOf('jasmani') !== -1;
+            };
             targetAssignments.forEach(function (ass) {
               var lockedJp = 0;
               HARI.forEach(function (h) {
                 for (var j = 1; j <= JP_MAX; j++) {
-                  var _nj_base$ass$kelasId;
-                  if (((_nj_base$ass$kelasId = nj_base[ass.kelasId]) === null || _nj_base$ass$kelasId === void 0 || (_nj_base$ass$kelasId = _nj_base$ass$kelasId[h]) === null || _nj_base$ass$kelasId === void 0 || (_nj_base$ass$kelasId = _nj_base$ass$kelasId[j]) === null || _nj_base$ass$kelasId === void 0 ? void 0 : _nj_base$ass$kelasId.mapelId) === ass.mapelId) lockedJp++;
+                  var cellChk = nj_base[ass.kelasId] && nj_base[ass.kelasId][h] ? nj_base[ass.kelasId][h][j] : null;
+                  if (cellChk && cellChk.mapelId === ass.mapelId) lockedJp++;
                 }
               });
               var rem = ass.jp - lockedJp;
               if (rem > 0) {
                 var isUmum = guruClasses[ass.guruId].size > 1;
-                // FIX: Jika isBlock dicentang, WAJIB biarkan utuh [rem], jangan pernah dipecah!
-                var cLengths = ass.isBlock ? [rem] : makeChunks(rem);
+                var isPjokAss = isPjokMapel(ass.mapelId);
+                // isWaliKelas: guru ini adalah wali kelas di kelas tempat ia mengajar mapel ini
+                // → chunk wali kelas dimasukkan PALING AKHIR ke jadwal
+                var isWaliKelas = !!(waliKelasMap[ass.guruId] && waliKelasMap[ass.guruId].has(ass.kelasId));
+                // PJOK selalu diperlakukan sebagai SATU blok utuh (JP 1..rem berurutan),
+                // berapapun setting isBlock aslinya, karena aturannya wajib mulai dari JP 1.
+                // Untuk JP yang punya opsi chunk-3 (3,5,6,7,8,9,10): gunakan makeChunksSlotAware
+                // yang memprioritaskan mengisi slot blok-3 kosong dulu, baru sisanya {2,4}.
+                var cLengths;
+                if (ass.isBlock || isPjokAss) {
+                  cLengths = [rem];
+                } else {
+                  cLengths = makeChunks(rem);
+                  if (cLengths === null) {
+                    var kelasObjCL = kelas.find(function(kk){ return kk.id === ass.kelasId; });
+                    var istJPCL = parseInt((kelasObjCL && kelasObjCL.jpIstirahat) || 4, 10);
+                    cLengths = makeChunksSlotAware(rem, ass.kelasId, nj_base, slotConfig, JP_MAX, istJPCL);
+                  }
+                }
                 cLengths.forEach(function (len) {
+                  // Mode isi3:
+                  //   - Assignment JP=3 sudah dipasang deterministik di STEP 3 pre-processing → SKIP
+                  //   - Assignment non-3JP yang ter-clear (isi3ClearedAssIds) → jadwal ulang semua chunk-nya
+                  //   - Assignment lain → skip (tidak disentuh mode isi3)
+                  if (genMode === 'isi3') {
+                    if (ass.jp === 3) {
+                      // Cek apakah STEP 3 berhasil memasang blok-3 ini secara utuh
+                      var terisi3 = 0;
+                      HARI.forEach(function(hh) {
+                        for (var jj = 1; jj <= JP_MAX; jj++) {
+                          var cc = nj_base[ass.kelasId] && nj_base[ass.kelasId][hh] ? nj_base[ass.kelasId][hh][jj] : null;
+                          if (cc && cc.mapelId === ass.mapelId) terisi3++;
+                        }
+                      });
+                      if (terisi3 >= 3) return; // sudah terpasang lengkap oleh STEP 3 → skip
+                      // STEP 3 gagal → biarkan masuk backtracking sebagai chunk-3
+                    } else {
+                      if (!isi3ClearedAssIds.has(ass.id)) return; // tidak di-clear → tidak disentuh
+                    }
+                  }
                   chunksToPlace.push({
                     id: ass.id,
                     kId: ass.kelasId,
                     mapelId: ass.mapelId,
                     guruId: ass.guruId,
                     len: len,
+                    totalJp: rem,        // total JP mapel ini (untuk prioritas sort)
                     isUmum: isUmum,
+                    isWaliKelas: isWaliKelas,
                     isPagi: ass.isPagi,
-                    isBlock: ass.isBlock
+                    isBlock: ass.isBlock,
+                    isPjok: isPjokAss
                   });
                 });
               }
             });
 
-            // PENGURUTAN BOBOT PRIORITAS
+            // Pengurutan awal V9 — Urutan prioritas penempatan chunk ke jadwal:
+            //
+            //   GRUP A — PALING AWAL (constraint paling ketat):
+            //     1. Mapel pagi (isPagi) → harus di JP 1-4, slot sangat terbatas
+            //     2. PJOK → wajib JP 1, satu blok utuh, paling kaku
+            //
+            //   GRUP B — MAPEL 3 JP (isi slot blok-3 dulu sebelum slot lain terpakai):
+            //     3. Mapel yang totalnya TEPAT 3 JP → chunk-nya pas satu blok, diprioritaskan
+            //        masuk lebih dulu supaya slot berturut-turut 3JP tidak "terpenggal" oleh chunk 2JP
+            //
+            //   GRUP C — LINTAS KELAS / GURU UMUM (guru yang mengajar > 1 kelas):
+            //     4. Mapel guru umum (Bahasa Inggris, Arab, Fikih, dll) → constraint bentrok lebih tinggi
+            //        karena satu guru harus fit di banyak kelas berbeda
+            //     Di dalam grup C: chunk 3 JP lebih dulu dari chunk 2 JP (aturan tetap)
+            //
+            //   GRUP D — SISA MAPEL BIASA:
+            //     5. Total JP terbesar didahulukan (lebih sulit dipasang → cari slot lebih awal)
+            //     6. Chunk 3 JP lebih dulu dari chunk 2 JP
+            //
+            //   GRUP E — PALING AKHIR (paling fleksibel, tinggal isi sisa slot):
+            //     7. Mapel wali kelas (guru yang juga wali di kelas itu sendiri)
+            //        → ditempatkan terakhir karena biasanya mapel tematik/banyak JP & fleksibel
+            //        → CATATAN: penalti sisa 1 JP kosong (score 50000) tetap aktif,
+            //          jadi wali kelas tidak akan menciptakan lubang 1JP permanen
             chunksToPlace.sort(function (a, b) {
+              // 1. Mapel pagi lebih dulu
               if (a.isPagi !== b.isPagi) return a.isPagi ? -1 : 1;
-              var totalA = assMap[a.id] || 0;
-              var totalB = assMap[b.id] || 0;
-              if (totalA !== totalB) return totalB - totalA;
+              // 2. Wali kelas paling akhir (sebelum cek lain supaya tidak naik ke atas)
+              if (a.isWaliKelas !== b.isWaliKelas) return a.isWaliKelas ? 1 : -1;
+              // 3. PJOK lebih dulu (dalam non-wali)
+              if (a.isPjok !== b.isPjok) return a.isPjok ? -1 : 1;
+              // 4. Mapel total TEPAT 3 JP didahulukan — isi blok-3 kosong sebelum terpenggal
+              var aIs3 = (a.totalJp || assMap[a.id] || 0) === 3;
+              var bIs3 = (b.totalJp || assMap[b.id] || 0) === 3;
+              if (aIs3 !== bIs3) return aIs3 ? -1 : 1;
+              // 5. Guru umum (lintas kelas) lebih dulu dari guru satu kelas
               if (a.isUmum !== b.isUmum) return a.isUmum ? -1 : 1;
-              return b.len - a.len;
+              // 6. Chunk 3 JP didahulukan dari chunk 2 JP (berlaku di semua grup)
+              if (a.len !== b.len) return b.len - a.len;
+              // 7. Total JP terbesar duluan (mapel besar lebih susah dipasang)
+              var totalA = a.totalJp || assMap[a.id] || 0;
+              var totalB = b.totalJp || assMap[b.id] || 0;
+              if (totalA !== totalB) return totalB - totalA;
+              return 0;
             });
-            setLog('Mengeksekusi Backtracking Loop & Simulasi Resolusi Bentrok...');
-            setProgress(40);
-            _context.n = 5;
-            return new Promise(function (r) {
-              return setTimeout(r, 50);
+
+            // ===================== RESERVASI BLOK-3 PER KELAS =====================
+            // Tujuan: mencegah chunk 2 JP masuk ke blok-slot berturut-turut 3JP yang
+            // seharusnya dipakai chunk 3JP. Tanpa ini, chunk 2JP bisa "memecah" blok-3
+            // sehingga sisa 1JP kosong permanen (haram).
+            //
+            // Cara kerja:
+            //   1. Hitung berapa chunk 3JP yang masih perlu ditempatkan per kelas per hari
+            //   2. Tandai blok-slot-3 mana yang "direservasi" untuk chunk 3JP itu
+            //   3. Di getValidSlots, chunk 2JP dilarang HARD masuk ke blok yang direservasi
+            //      (bukan hanya dipenalti — penalti 50000 ternyata tidak cukup kuat)
+            //
+            // Reservasi bersifat DINAMIS: diupdate saat placeChunk/unplaceChunk dipanggil
+            // supaya saat chunk 3JP sudah terisi, reservasinya dilepas untuk chunk lain.
+
+            // Hitung kebutuhan chunk-3 per kelas (dari chunksToPlace)
+            var need3PerKelas = {}; // need3PerKelas[kId] = jumlah chunk berukuran 3 yang belum terpasang
+            chunksToPlace.forEach(function(ch) {
+              if (ch.len === 3) {
+                if (!need3PerKelas[ch.kId]) need3PerKelas[ch.kId] = 0;
+                need3PerKelas[ch.kId]++;
+              }
             });
-          case 5:
-            bestNj = null;
-            minErrors = Infinity;
-            bestErrors = [];
-            maxIterations = 50;
-            iter = 0;
-          case 6:
-            if (!(iter < maxIterations)) {
-              _context.n = 28;
-              break;
+
+            // Fungsi: hitung blok-3 yang tersedia (berturut-turut 3JP kosong aktif, DI POSISI YANG
+            // DIIZINKAN — habis Upacara/Senin, habis istirahat/Jumat-Sabtu, atau bebas jika kelas
+            // tidak punya istirahat tengah hari) per kelas per hari.
+            // Mengembalikan array [{h, s}] — posisi awal tiap blok-3 kosong
+            function getBlok3Kosong(kId, nj_sim) {
+              var hasil = [];
+              HARI.forEach(function(h) {
+                var scH = slotConfig && slotConfig[kId] && slotConfig[kId][h];
+                if (!scH) return;
+                var kelasObj2 = kelas.find(function(kk){ return kk.id === kId; });
+                var istJP2 = parseInt((kelasObj2 && kelasObj2.jpIstirahat) || 4, 10);
+                var validStarts = getValidBlok3Starts(istJP2, h, scH, JP_MAX);
+                validStarts.forEach(function(s) {
+                  var kosong = !(nj_sim[kId] && nj_sim[kId][h] && (nj_sim[kId][h][s] || nj_sim[kId][h][s+1] || nj_sim[kId][h][s+2]));
+                  if (kosong) hasil.push({ h: h, s: s });
+                });
+              });
+              return hasil;
             }
-            nj_sim = JSON.parse(JSON.stringify(nj_base));
-            gt_sim = JSON.parse(JSON.stringify(gt_base));
-            errors_sim = [];
-            iterChunks = [].concat(chunksToPlace);
-            if (iter > 0) {
-              // Shuffle
-              for (i = iterChunks.length - 1; i > 0; i--) {
-                j = Math.floor(Math.random() * (i + 1));
-                if (iterChunks[i].isPagi === iterChunks[j].isPagi && iterChunks[i].len === iterChunks[j].len) {
-                  _ref0 = [iterChunks[j], iterChunks[i]];
-                  iterChunks[i] = _ref0[0];
-                  iterChunks[j] = _ref0[1];
+
+            // Fungsi: apakah posisi (kId, h, s, len=2) akan "memecah" blok-3 yang direservasi?
+            // Chunk 2JP di posisi s memecah blok-3 jika:
+            //   - ada blok-3 kosong yang dimulai di s-1, s, atau s+1 (overlapping)
+            //   AND kelas ini masih punya kebutuhan chunk-3 yang belum terpasang
+            //   AND jumlah blok-3 kosong <= jumlah kebutuhan chunk-3 (tidak ada cadangan)
+            function akanMemecahBlok3(kId, h, s, len, nj_sim) {
+              if (len >= 3) return false; // chunk 3JP tidak memecah blok-3 milik sendiri
+              var need = need3PerKelas[kId] || 0;
+              if (need === 0) return false; // tidak ada kebutuhan chunk-3, bebas
+              var blok3 = getBlok3Kosong(kId, nj_sim);
+              if (blok3.length > need) return false; // ada blok-3 cadangan, aman
+              // Cek apakah posisi (h,s..s+len-1) overlap dengan salah satu blok-3 yang ada
+              for (var bi = 0; bi < blok3.length; bi++) {
+                var b = blok3[bi];
+                if (b.h !== h) continue;
+                var bEnd = b.s + 2; // blok-3 menempati s, s+1, s+2
+                var cEnd = s + len - 1;
+                // overlap: chunk mulai sebelum akhir blok DAN berakhir setelah awal blok
+                if (s <= bEnd && cEnd >= b.s) return true;
+              }
+              return false;
+            }
+
+            setLog('Mengeksekusi True Backtracking (Most-Constrained-First)...');
+            setProgress(30);
+
+            setTimeout(function () {
+              // ===================== 3. HITUNG SEMUA SLOT VALID UNTUK SATU CHUNK =====================
+              // Mengembalikan array {h, s, score} dari semua posisi yang valid bagi sebuah chunk,
+              // mengacu pada state nj_sim/gt_sim saat ini.
+              function getValidSlots(chunk, nj_sim, gt_sim) {
+                var out = [];
+                for (var hi = 0; hi < HARI.length; hi++) {
+                  var h = HARI[hi];
+                  if (guruOffDays && guruOffDays[chunk.guruId] && guruOffDays[chunk.guruId][h]) continue;
+
+                  // ATURAN: PJOK/Olahraga/Penjas boleh di hari manapun, TAPI wajib dimulai
+                  // dari JP 1. PENGECUALIAN SATU-SATUNYA: hari Senin, jika JP 1 terpakai Upacara,
+                  // PJOK boleh mulai JP 2 dan boleh melewati istirahat (karena mundur 1 slot).
+                  // Di hari selain Senin, PJOK selalu dari JP 1 dan tidak boleh melewati istirahat.
+                  if (chunk.isPjok && chunk.len > JP_MAX) continue;
+                  var adaUpacaraDisini = h === 'Senin' && !!(nj_sim[chunk.kId][h][1] && nj_sim[chunk.kId][h][1].isUpacara);
+                  var pjokStartWajib = adaUpacaraDisini ? 2 : 1;
+
+                  // ATURAN: titik istirahat kelas ini (JP terakhir SEBELUM istirahat, default 4)
+                  var kelasObj = kelas.find(function (kk) { return kk.id === chunk.kId; });
+                  var istJP = parseInt((kelasObj && kelasObj.jpIstirahat) || 4, 10);
+
+                  var hasSameMapel = false;
+                  for (var jx = 1; jx <= JP_MAX; jx++) {
+                    if (nj_sim[chunk.kId][h][jx] && nj_sim[chunk.kId][h][jx].mapelId === chunk.mapelId) hasSameMapel = true;
+                  }
+                  var maxPagi = h === 'Senin' ? 5 : 4;
+
+                  for (var s = 1; s <= JP_MAX - chunk.len + 1; s++) {
+                    if (chunk.isPagi && s + chunk.len - 1 > maxPagi) continue;
+
+                    // ATURAN: PJOK wajib mulai persis di JP1 (atau JP2 khusus Senin ada Upacara).
+                    if (chunk.isPjok && s !== pjokStartWajib) continue;
+
+                    // ATURAN: chunk tidak boleh melewati titik istirahat (mulai sebelum, berakhir sesudah).
+                    // Pengecualian SATU-SATUNYA: PJOK di hari Senin yang JP1-nya terpakai Upacara —
+                    // karena terpaksa mulai JP2, bisa melewati istirahat.
+                    // Di hari lain, PJOK tetap tidak boleh melewati istirahat meski mulai JP1.
+                    var bolehLewatIstirahat = chunk.isPjok && adaUpacaraDisini;
+                    if (!bolehLewatIstirahat && s <= istJP && s + chunk.len - 1 > istJP) continue;
+
+                    // ATURAN KHUSUS CHUNK 3 JP (non-PJOK): hanya boleh ditempatkan di posisi yang
+                    // diizinkan (Senin tepat setelah Upacara, Jumat/Sabtu tepat setelah istirahat,
+                    // atau bebas jika kelas ini tidak punya titik istirahat tengah hari).
+                    // PJOK dikecualikan karena sudah punya aturan posisi sendiri (wajib mulai JP1/JP2).
+                    if (chunk.len === 3 && !chunk.isPjok) {
+                      var scHForBlok3 = slotConfig && slotConfig[chunk.kId] && slotConfig[chunk.kId][h];
+                      var validStarts3 = getValidBlok3Starts(istJP, h, scHForBlok3, JP_MAX);
+                      if (validStarts3.indexOf(s) === -1) continue;
+                    }
+
+                    var valid = true;
+                    for (var c = 0; c < chunk.len; c++) {
+                      var slotOk = slotConfig && slotConfig[chunk.kId] && slotConfig[chunk.kId][h] ? slotConfig[chunk.kId][h][s + c] : false;
+                      if (!slotOk) { valid = false; break; }
+                      if (nj_sim[chunk.kId][h][s + c] != null) { valid = false; break; }
+                      if (gt_sim[h][s + c] && gt_sim[h][s + c][chunk.guruId]) { valid = false; break; }
+                    }
+                    if (!valid) continue;
+                    if (!cekKuotaPref(chunk.guruId, h, s, chunk.len, gt_sim, guruPreferensi)) continue;
+
+                    // LARANGAN HARD: chunk 2JP tidak boleh masuk ke blok-3 yang
+                    // direservasi untuk chunk 3JP (jika blok-3 tidak ada cadangan).
+                    // Ini mencegah sisa 1JP kosong permanen secara deterministik,
+                    // bukan hanya melalui penalti skor yang bisa kalah bersaing.
+                    if (chunk.len === 2 && akanMemecahBlok3(chunk.kId, h, s, chunk.len, nj_sim)) continue;
+
+                    var score = 0;
+                    if (hasSameMapel) score += 5000;
+                    if (!chunk.isPagi && !chunk.isUmum) score += s * 10;
+
+                    var prevSlotOk = s > 1 && slotConfig && slotConfig[chunk.kId] && slotConfig[chunk.kId][h] ? slotConfig[chunk.kId][h][s - 1] : false;
+                    var prevEmpty = s > 1 && prevSlotOk && !nj_sim[chunk.kId][h][s - 1];
+                    var prevPrevSlotOk = s > 2 && slotConfig && slotConfig[chunk.kId] && slotConfig[chunk.kId][h] ? slotConfig[chunk.kId][h][s - 2] : false;
+                    var prevPrevEmpty = s > 2 && prevPrevSlotOk && !nj_sim[chunk.kId][h][s - 2];
+                    if (prevEmpty && !prevPrevEmpty) score += 10000;
+
+                    var nextSlotOk = s + chunk.len <= JP_MAX && slotConfig && slotConfig[chunk.kId] && slotConfig[chunk.kId][h] ? slotConfig[chunk.kId][h][s + chunk.len] : false;
+                    var nextEmpty = s + chunk.len <= JP_MAX && nextSlotOk && !nj_sim[chunk.kId][h][s + chunk.len];
+                    var nextNextSlotOk = s + chunk.len + 1 <= JP_MAX && slotConfig && slotConfig[chunk.kId] && slotConfig[chunk.kId][h] ? slotConfig[chunk.kId][h][s + chunk.len + 1] : false;
+                    var nextNextEmpty = s + chunk.len + 1 <= JP_MAX && nextNextSlotOk && !nj_sim[chunk.kId][h][s + chunk.len + 1];
+                    if (nextEmpty && !nextNextEmpty) score += 10000;
+
+                    // PENALTI: hindari meninggalkan slot tunggal (1 JP kosong tersisa) di blok yang sama
+                    // setelah chunk ini ditempatkan. Slot tunggal tidak boleh diisi mapel (aturan min 2 JP),
+                    // sehingga posisi ini akan menciptakan lubang permanen yang tidak bisa diisi.
+                    //
+                    // Algoritma: hitung slot aktif & kosong di blok (sebelum-istirahat atau sesudah-istirahat)
+                    // tempat chunk ini akan duduk. Jika sisa kosong setelah penempatan = 1, beri penalti besar.
+                    (function() {
+                      var scKid = slotConfig && slotConfig[chunk.kId] && slotConfig[chunk.kId][h];
+                      if (!scKid) return;
+                      // tentukan rentang blok: sebelum istirahat = JP 1..istJP, sesudah = JP istJP+1..JP_MAX
+                      var blokStart = (s <= istJP) ? 1 : (istJP + 1);
+                      var blokEnd   = (s <= istJP) ? istJP : JP_MAX;
+                      // hitung slot kosong di blok ini (aktif di slotConfig & belum terisi di nj_sim)
+                      var kosongDiBlok = 0;
+                      for (var bj = blokStart; bj <= blokEnd; bj++) {
+                        if (scKid[bj] && !nj_sim[chunk.kId][h][bj]) kosongDiBlok++;
+                      }
+                      // sisa kosong setelah chunk ditempatkan
+                      var sisaKosong = kosongDiBlok - chunk.len;
+                      if (sisaKosong === 1) score += 50000; // penalti besar: akan tersisa 1 JP kosong
+                    })();
+
+                    out.push({ h: h, s: s, score: score });
+                  }
+                }
+                out.sort(function (a, b) { return a.score - b.score; });
+                return out;
+              }
+
+              function placeChunk(chunk, h, s, nj_sim, gt_sim) {
+                for (var c = 0; c < chunk.len; c++) {
+                  nj_sim[chunk.kId][h][s + c] = { id: chunk.id, mapelId: chunk.mapelId, guruId: chunk.guruId };
+                  gt_sim[h][s + c][chunk.guruId] = true;
+                }
+                // Update kebutuhan chunk-3: jika chunk ini ukuran 3, kurangi kebutuhan kelas ini
+                if (chunk.len === 3 && need3PerKelas[chunk.kId] > 0) {
+                  need3PerKelas[chunk.kId]--;
                 }
               }
-            }
-            _i2 = 0;
-          case 7:
-            if (!(_i2 < iterChunks.length)) {
-              _context.n = 25;
-              break;
-            }
-            chunk = iterChunks[_i2];
-            bestH = null, bestS = null, bestScore = Infinity;
-            days = [].concat(HARI).sort(function () {
-              return Math.random() - 0.5;
-            });
-            _iterator = _createForOfIteratorHelper(days);
-            _context.p = 8;
-            _iterator.s();
-          case 9:
-            if ((_step2 = _iterator.n()).done) {
-              _context.n = 20;
-              break;
-            }
-            h = _step2.value;
-            if (!((_guruOffDays$chunk$gu = guruOffDays[chunk.guruId]) !== null && _guruOffDays$chunk$gu !== void 0 && _guruOffDays$chunk$gu[h])) {
-              _context.n = 10;
-              break;
-            }
-            return _context.a(3, 19);
-          case 10:
-            hasSameMapel = false;
-            for (_j = 1; _j <= JP_MAX; _j++) if (nj_sim[chunk.kId][h][_j] && nj_sim[chunk.kId][h][_j].mapelId === chunk.mapelId) hasSameMapel = true;
-            maxPagi = h === 'Senin' ? 5 : 4;
-            s = 1;
-          case 11:
-            if (!(s <= JP_MAX - chunk.len + 1)) {
-              _context.n = 19;
-              break;
-            }
-            if (!(chunk.isPagi && s + chunk.len - 1 > maxPagi)) {
-              _context.n = 12;
-              break;
-            }
-            return _context.a(3, 18);
-          case 12:
-            valid = true;
-            _c = 0;
-          case 13:
-            if (!(_c < chunk.len)) {
-              _context.n = 17;
-              break;
-            }
-            if (slotConfig !== null && slotConfig !== void 0 && (_slotConfig$chunk$kId = slotConfig[chunk.kId]) !== null && _slotConfig$chunk$kId !== void 0 && (_slotConfig$chunk$kId = _slotConfig$chunk$kId[h]) !== null && _slotConfig$chunk$kId !== void 0 && _slotConfig$chunk$kId[s + _c]) {
-              _context.n = 14;
-              break;
-            }
-            valid = false;
-            return _context.a(3, 17);
-          case 14:
-            if (!(nj_sim[chunk.kId][h][s + _c] !== null)) {
-              _context.n = 15;
-              break;
-            }
-            valid = false;
-            return _context.a(3, 17);
-          case 15:
-            if (!gt_sim[h][s + _c][chunk.guruId]) {
-              _context.n = 16;
-              break;
-            }
-            valid = false;
-            return _context.a(3, 17);
-          case 16:
-            _c++;
-            _context.n = 13;
-            break;
-          case 17:
-            if (valid) valid = cekKuotaPref(chunk.guruId, h, s, chunk.len, gt_sim, guruPreferensi);
-            if (valid) {
-              score = 0;
-              if (hasSameMapel) score += 5000;
-              if (!chunk.isPagi && !chunk.isUmum) score += s * 10;
-              prevEmpty = s > 1 && (slotConfig === null || slotConfig === void 0 || (_slotConfig$chunk$kId2 = slotConfig[chunk.kId]) === null || _slotConfig$chunk$kId2 === void 0 || (_slotConfig$chunk$kId2 = _slotConfig$chunk$kId2[h]) === null || _slotConfig$chunk$kId2 === void 0 ? void 0 : _slotConfig$chunk$kId2[s - 1]) && !nj_sim[chunk.kId][h][s - 1];
-              prevPrevEmpty = s > 2 && (slotConfig === null || slotConfig === void 0 || (_slotConfig$chunk$kId3 = slotConfig[chunk.kId]) === null || _slotConfig$chunk$kId3 === void 0 || (_slotConfig$chunk$kId3 = _slotConfig$chunk$kId3[h]) === null || _slotConfig$chunk$kId3 === void 0 ? void 0 : _slotConfig$chunk$kId3[s - 2]) && !nj_sim[chunk.kId][h][s - 2];
-              if (prevEmpty && !prevPrevEmpty) score += 10000;
-              nextEmpty = s + chunk.len <= JP_MAX && (slotConfig === null || slotConfig === void 0 || (_slotConfig$chunk$kId4 = slotConfig[chunk.kId]) === null || _slotConfig$chunk$kId4 === void 0 || (_slotConfig$chunk$kId4 = _slotConfig$chunk$kId4[h]) === null || _slotConfig$chunk$kId4 === void 0 ? void 0 : _slotConfig$chunk$kId4[s + chunk.len]) && !nj_sim[chunk.kId][h][s + chunk.len];
-              nextNextEmpty = s + chunk.len + 1 <= JP_MAX && (slotConfig === null || slotConfig === void 0 || (_slotConfig$chunk$kId5 = slotConfig[chunk.kId]) === null || _slotConfig$chunk$kId5 === void 0 || (_slotConfig$chunk$kId5 = _slotConfig$chunk$kId5[h]) === null || _slotConfig$chunk$kId5 === void 0 ? void 0 : _slotConfig$chunk$kId5[s + chunk.len + 1]) && !nj_sim[chunk.kId][h][s + chunk.len + 1];
-              if (nextEmpty && !nextNextEmpty) score += 10000;
-              if (score < bestScore) {
-                bestScore = score;
-                bestH = h;
-                bestS = s;
+              function unplaceChunk(chunk, h, s, nj_sim, gt_sim) {
+                for (var c = 0; c < chunk.len; c++) {
+                  nj_sim[chunk.kId][h][s + c] = null;
+                  delete gt_sim[h][s + c][chunk.guruId];
+                }
+                // Kembalikan kebutuhan chunk-3 saat backtrack
+                if (chunk.len === 3) {
+                  if (!need3PerKelas[chunk.kId]) need3PerKelas[chunk.kId] = 0;
+                  need3PerKelas[chunk.kId]++;
+                }
               }
-            }
-          case 18:
-            s++;
-            _context.n = 11;
-            break;
-          case 19:
-            _context.n = 9;
-            break;
-          case 20:
-            _context.n = 22;
-            break;
-          case 21:
-            _context.p = 21;
-            _t = _context.v;
-            _iterator.e(_t);
-          case 22:
-            _context.p = 22;
-            _iterator.f();
-            return _context.f(22);
-          case 23:
-            if (bestH) {
-              for (c = 0; c < chunk.len; c++) {
-                nj_sim[chunk.kId][bestH][bestS + c] = {
-                  id: chunk.id,
-                  mapelId: chunk.mapelId,
-                  guruId: chunk.guruId
+
+              // ===================== 4. BACKTRACKING REKURSIF (MOST-CONSTRAINED-FIRST) =====================
+              // remaining: daftar chunk yang belum ditempatkan pada cabang pencarian ini.
+              // Pada setiap langkah dipilih chunk dengan jumlah slot valid PALING SEDIKIT
+              // (most-constrained-first) -> kegagalan terdeteksi lebih cepat, backtrack lebih efisien.
+              var MAX_NODES = 60000; // budget langkah pencarian agar tetap responsif di browser
+              var nodesVisited = 0;
+              var deadline = Date.now() + 7000; // batas waktu keras ~7 detik untuk satu usaha backtracking penuh
+
+              function backtrack(remaining, nj_sim, gt_sim, placedLog) {
+                nodesVisited++;
+                if (nodesVisited > MAX_NODES || Date.now() > deadline) return 'TIMEOUT';
+                if (remaining.length === 0) return true;
+
+                // Pilih chunk paling terbatas (paling sedikit slot valid) sebagai langkah berikutnya
+                var bestIdx = -1, bestSlots = null, bestCount = Infinity;
+                for (var i = 0; i < remaining.length; i++) {
+                  var slots = getValidSlots(remaining[i], nj_sim, gt_sim);
+                  if (slots.length < bestCount) {
+                    bestCount = slots.length;
+                    bestIdx = i;
+                    bestSlots = slots;
+                    if (bestCount === 0) break; // kegagalan instan, tak perlu cek sisanya
+                  }
+                }
+
+                if (bestCount === 0) return false; // chunk ini tak punya slot sama sekali -> gagal, backtrack
+
+                var chunk = remaining[bestIdx];
+                var rest = remaining.slice(0, bestIdx).concat(remaining.slice(bestIdx + 1));
+
+                // Coba beberapa kandidat slot terbaik (dibatasi agar tidak meledak kombinatorial)
+                var candidates = bestSlots.slice(0, 12);
+                for (var ci = 0; ci < candidates.length; ci++) {
+                  var cand = candidates[ci];
+                  placeChunk(chunk, cand.h, cand.s, nj_sim, gt_sim);
+                  placedLog.push({ chunk: chunk, h: cand.h, s: cand.s });
+
+                  var result = backtrack(rest, nj_sim, gt_sim, placedLog);
+                  if (result === true) return true;
+                  if (result === 'TIMEOUT') {
+                    unplaceChunk(chunk, cand.h, cand.s, nj_sim, gt_sim);
+                    placedLog.pop();
+                    return 'TIMEOUT';
+                  }
+                  // gagal -> backtrack: lepas penempatan, coba kandidat slot berikutnya
+                  unplaceChunk(chunk, cand.h, cand.s, nj_sim, gt_sim);
+                  placedLog.pop();
+                }
+                return false;
+              }
+
+              // ===================== 5. EKSEKUSI: BACKTRACKING PENUH, FALLBACK GREEDY MULTI-RESTART =====================
+              var nj_sim = JSON.parse(JSON.stringify(nj_base));
+              var gt_sim = JSON.parse(JSON.stringify(gt_base));
+              var placedLog = [];
+              var fullResult = backtrack(chunksToPlace.slice(), nj_sim, gt_sim, placedLog);
+
+              var bestNj, bestErrors;
+
+              if (fullResult === true) {
+                // Solusi sempurna ditemukan: nol bentrok
+                bestNj = nj_sim;
+                bestErrors = [];
+              } else {
+                // Backtracking penuh gagal/timeout (struktur data memang sangat padat).
+                // Fallback: greedy multi-restart (acak ulang & ambil hasil dengan error paling sedikit),
+                // sama seperti versi sebelumnya, namun dengan iterasi lebih banyak karena dibatasi waktu, bukan angka fix.
+                setLog('Backtracking penuh tidak menemukan solusi sempurna dalam batas waktu. Menjalankan strategi cadangan (Greedy Multi-Restart)...');
+                var fallback = runGreedyFallback();
+                bestNj = fallback.bestNj;
+                bestErrors = fallback.bestErrors;
+              }
+
+              setLog('Finalisasi Validasi Integritas...');
+              setProgress(95);
+
+              setTimeout(function () {
+                setProgress(100);
+
+                // ===== POST-PROCESS: Absorb sisa 1JP kosong permanen =====
+                // Scan setiap kelas & hari: jika ada slot aktif kosong yang terisolasi
+                // (slot sebelum & sesudahnya sudah terisi atau tidak aktif),
+                // coba pindahkan mapel terdekat dari hari yang sama untuk mengisi slot itu.
+                // Ini adalah safety net terakhir setelah backtracking.
+                (function absorbSisa1JP() {
+                  kelas.forEach(function(k) {
+                    var scK = slotConfig && slotConfig[k.id];
+                    if (!scK) return;
+                    var kelasObj = kelas.find(function(kk){ return kk.id === k.id; });
+                    var istJP = parseInt((kelasObj && kelasObj.jpIstirahat) || 4, 10);
+                    HARI.forEach(function(h) {
+                      var scH = scK[h];
+                      if (!scH) return;
+                      for (var jp = 1; jp <= JP_MAX; jp++) {
+                        if (!scH[jp]) continue;
+                        var cell = bestNj[k.id] && bestNj[k.id][h] ? bestNj[k.id][h][jp] : null;
+                        if (cell) continue; // slot terisi, skip
+                        // Cek apakah ini slot kosong terisolasi (1JP orphan)
+                        var prevActive = jp > 1 && scH[jp-1];
+                        var nextActive = jp < JP_MAX && scH[jp+1];
+                        var prevFilled = prevActive && bestNj[k.id][h][jp-1];
+                        var nextFilled = nextActive && bestNj[k.id][h][jp+1];
+                        var prevBorder = !prevActive || (jp-1 === istJP); // tepat di batas istirahat
+                        var nextBorder = !nextActive || (jp === istJP);
+                        var isOrphan = (prevFilled || prevBorder) && (nextFilled || nextBorder);
+                        if (!isOrphan) continue;
+                        // Slot ini orphan. Cari mapel terdekat di hari yang sama yang bisa diperluas
+                        // ke slot ini (mapel di jp-1 atau jp+1, guru tidak bentrok)
+                        var absorbed = false;
+                        // Coba absorb dari slot sebelumnya (jp-1)
+                        if (prevFilled && !prevBorder) {
+                          var prevCell = bestNj[k.id][h][jp-1];
+                          if (prevCell && prevCell.mapelId && !prevCell.isUpacara) {
+                            var isLk = lockedSlots && lockedSlots[k.id] && lockedSlots[k.id][h] && lockedSlots[k.id][h][jp];
+                            if (!isLk) {
+                              bestNj[k.id][h][jp] = { id: prevCell.id, mapelId: prevCell.mapelId, guruId: prevCell.guruId };
+                              absorbed = true;
+                            }
+                          }
+                        }
+                        // Coba absorb dari slot sesudahnya (jp+1) jika belum berhasil
+                        if (!absorbed && nextFilled && !nextBorder) {
+                          var nextCell = bestNj[k.id][h][jp+1];
+                          if (nextCell && nextCell.mapelId && !nextCell.isUpacara) {
+                            var isLk2 = lockedSlots && lockedSlots[k.id] && lockedSlots[k.id][h] && lockedSlots[k.id][h][jp];
+                            if (!isLk2) {
+                              bestNj[k.id][h][jp] = { id: nextCell.id, mapelId: nextCell.mapelId, guruId: nextCell.guruId };
+                              absorbed = true;
+                            }
+                          }
+                        }
+                      }
+                    });
+                  });
+                })();
+
+                setJadwal(bestNj);
+                setIsGenerated(true);
+                var historyEntry = {
+                  id: 'H' + Date.now(),
+                  name: "Jadwal AI (" + genMode + ") - " + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                  time: new Date().toLocaleTimeString('id-ID'),
+                  data: bestNj
                 };
-                gt_sim[bestH][bestS + c][chunk.guruId] = true;
+                setHistory(function (prev) {
+                  return [historyEntry].concat(_toConsumableArray(prev)).slice(0, 5);
+                });
+                setStatus('done');
+                setLog(bestErrors.length > 0
+                  ? '⚠️ Generate Selesai (dengan sedikit Kendala/Bentrok). Hasil terbaik:\n\n- ' + bestErrors.join('\n- ')
+                  : '✅ Sempurna! Seluruh jadwal berhasil disusun tanpa bentrok (True Backtracking berhasil).');
+                resolveOuter();
+              }, 150);
+
+              // ===================== FUNGSI CADANGAN: GREEDY MULTI-RESTART (TIME-BUDGETED) =====================
+              function runGreedyFallback() {
+                var bestNjLocal = null;
+                var minErrorsLocal = Infinity;
+                var bestErrorsLocal = [];
+                var fallbackDeadline = Date.now() + 5000; // 5 detik tambahan untuk strategi cadangan
+                var iterLocal = 0;
+                var maxIterLocal = 200; // jauh lebih banyak dari versi lama (50), dibatasi oleh waktu juga
+
+                while (iterLocal < maxIterLocal && Date.now() < fallbackDeadline) {
+                  var nj2 = JSON.parse(JSON.stringify(nj_base));
+                  var gt2 = JSON.parse(JSON.stringify(gt_base));
+                  var errors2 = [];
+                  var iterChunks = chunksToPlace.slice();
+
+                  if (iterLocal > 0) {
+                    for (var ii = iterChunks.length - 1; ii > 0; ii--) {
+                      var jj = Math.floor(Math.random() * (ii + 1));
+                      // Shuffle hanya antar chunk yang SETARA GRUPNYA:
+                      // - pagi sama, wali sama, pjok sama, len sama
+                      // Ini menjaga urutan prioritas V9 (pagi→PJOK→3JP→umum→wali)
+                      // tetap terjaga saat greedy multi-restart mengacak ulang
+                      if (iterChunks[ii].isPagi      === iterChunks[jj].isPagi &&
+                          iterChunks[ii].isWaliKelas  === iterChunks[jj].isWaliKelas &&
+                          iterChunks[ii].isPjok       === iterChunks[jj].isPjok &&
+                          iterChunks[ii].isUmum       === iterChunks[jj].isUmum &&
+                          iterChunks[ii].len          === iterChunks[jj].len) {
+                        var tmpv = iterChunks[ii]; iterChunks[ii] = iterChunks[jj]; iterChunks[jj] = tmpv;
+                      }
+                    }
+                  }
+
+                  for (var ic = 0; ic < iterChunks.length; ic++) {
+                    var chk = iterChunks[ic];
+                    var slotsHere = getValidSlots(chk, nj2, gt2);
+                    if (slotsHere.length > 0) {
+                      placeChunk(chk, slotsHere[0].h, slotsHere[0].s, nj2, gt2);
+                    } else {
+                      errors2.push("Bentrok Data: Blok utuh " + chk.len + " JP " + mName(chk.mapelId) + " di " + kName(chk.kId) + " gagal ditempatkan.");
+                    }
+                  }
+
+                  if (errors2.length < minErrorsLocal) {
+                    minErrorsLocal = errors2.length;
+                    bestErrorsLocal = errors2;
+                    bestNjLocal = nj2;
+                    if (minErrorsLocal === 0) break;
+                  }
+                  iterLocal++;
+                }
+                return { bestNj: bestNjLocal || nj_base, bestErrors: bestErrorsLocal };
               }
-            } else {
-              errors_sim.push("Bentrok Data: Blok utuh ".concat(chunk.len, " JP ").concat(mName(chunk.mapelId), " di ").concat(kName(chunk.kId), " gagal ditempatkan."));
-            }
-          case 24:
-            _i2++;
-            _context.n = 7;
-            break;
-          case 25:
-            if (!(errors_sim.length < minErrors)) {
-              _context.n = 26;
-              break;
-            }
-            minErrors = errors_sim.length;
-            bestErrors = errors_sim;
-            bestNj = nj_sim;
-            if (!(minErrors === 0)) {
-              _context.n = 26;
-              break;
-            }
-            return _context.a(3, 28);
-          case 26:
-            if (!(iter % 10 === 0)) {
-              _context.n = 27;
-              break;
-            }
-            setProgress(40 + Math.floor(iter / maxIterations * 50));
-            _context.n = 27;
-            return new Promise(function (r) {
-              return setTimeout(r, 5);
-            });
-          case 27:
-            iter++;
-            _context.n = 6;
-            break;
-          case 28:
-            setLog('Finalisasi Validasi Integritas...');
-            setProgress(95);
-            _context.n = 29;
-            return new Promise(function (r) {
-              return setTimeout(r, 150);
-            });
-          case 29:
-            setProgress(100);
-            setJadwal(bestNj);
-            setIsGenerated(true);
-            historyEntry = {
-              id: 'H' + Date.now(),
-              name: "Jadwal AI (".concat(genMode, ") - ").concat(new Date().toLocaleTimeString('id-ID', {
-                hour: '2-digit',
-                minute: '2-digit'
-              })),
-              time: new Date().toLocaleTimeString('id-ID'),
-              data: bestNj
-            };
-            setHistory(function (prev) {
-              return [historyEntry].concat(_toConsumableArray(prev)).slice(0, 5);
-            });
-            setStatus('done');
-            setLog(bestErrors.length > 0 ? '⚠️ Generate Selesai (dengan sedikit Kendala/Bentrok). Hasil terbaik:\n\n- ' + bestErrors.join('\n- ') : '✅ Sempurna! Seluruh jadwal berhasil disusun (aturan blok dipatuhi).');
-          case 30:
-            return _context.a(2);
-        }
-      }, _callee, null, [[8, 21, 22, 23]]);
-    }));
-    function runGenerator() {
-      return _runGenerator.apply(this, arguments);
-    }
-    return runGenerator;
-  }();
+            }, 50);
+          }, 50);
+        }, 50);
+      }, 30);
+    });
+  };
   var inpSel = {
     background: '#0d0d14',
     border: '1px solid #333',
@@ -5189,14 +5829,14 @@ var AutoGenerate = memo(function (_ref9) {
       color: '#fff',
       marginBottom: 8
     }
-  }, "AI SCHEDULER V7"), /*#__PURE__*/React.createElement("p", {
+  }, "AI SCHEDULER V9"), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12,
       color: '#555',
       marginBottom: 20,
       lineHeight: 1.7
     }
-  }, "Mengunci Upacara Senin secara absolut, menjamin keutuhan JP untuk setingan \"Satu Blok\", dan perlindungan sinkronisasi antara Jadwal Kelas dan Guru."), status !== 'processing' && /*#__PURE__*/React.createElement("div", {
+  }, "Prioritas Chunk 3JP • Reservasi Blok-3 per Kelas • Guru Lintas Kelas Duluan • Wali Kelas Terakhir • Anti Sisa 1JP Permanen ⚡ Smart Fill 3JP."), status !== 'processing' && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: 'left'
     }
@@ -5235,7 +5875,9 @@ var AutoGenerate = memo(function (_ref9) {
     value: "kelas"
   }, "Pilih Beberapa Kelas"), /*#__PURE__*/React.createElement("option", {
     value: "guru"
-  }, "Pilih Beberapa Guru"))), genMode === 'kelas' && /*#__PURE__*/React.createElement("div", {
+  }, "Pilih Beberapa Guru"), /*#__PURE__*/React.createElement("option", {
+    value: "isi3"
+  }, "\u26A1 Isi Slot 3JP Kosong (Smart Fill)"))), genMode === 'kelas' && /*#__PURE__*/React.createElement("div", {
     className: "hs",
     style: {
       flex: '2 1 250px',
@@ -5407,7 +6049,21 @@ var AutoGenerate = memo(function (_ref9) {
     style: {
       marginRight: 4
     }
-  }), "Generate hanya untuk ", genGuruKelas.length, " kelas yang dipilih."))), status === 'processing' && /*#__PURE__*/React.createElement("div", {
+  }), "Generate hanya untuk ", genGuruKelas.length, " kelas yang dipilih."))), genMode === 'isi3' && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12,
+      background: 'rgba(0,229,160,.07)',
+      border: '1px solid rgba(0,229,160,.3)',
+      borderRadius: 10,
+      padding: '12px 14px'
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: 11, color: '#00e5a0', fontWeight: 700, marginBottom: 6 }
+  }, /*#__PURE__*/React.createElement("i", { className: "fas fa-lightbulb", style: { marginRight: 6 } }), "Cara Kerja Smart Fill 3JP:"), /*#__PURE__*/React.createElement("ol", {
+    style: { fontSize: 11, color: '#aaa', lineHeight: 1.8, paddingLeft: 18 }
+  }, /*#__PURE__*/React.createElement("li", null, "Scan semua kelas \u2192 temukan blok 3 slot kosong berurutan (sebelum/sesudah istirahat)"), /*#__PURE__*/React.createElement("li", null, "Keluarkan mapel lain dari blok itu jika mapel tersebut bukan 3JP (cek dulu apakah mapel yang di sana punya JP yang bisa digeser)"), /*#__PURE__*/React.createElement("li", null, "Cari mapel yang totalnya TEPAT 3 JP atau chunk-nya 3JP \u2192 masukkan ke slot kosong 3JP"), /*#__PURE__*/React.createElement("li", null, "Slot terkunci (\uD83D\uDD12) tidak akan disentuh"), /*#__PURE__*/React.createElement("li", null, "Hanya mengisi slot kosong \u2014 tidak reset jadwal yang sudah ada"))), /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: 10, color: '#fbbf24', marginTop: 8 }
+  }, /*#__PURE__*/React.createElement("i", { className: "fas fa-exclamation-triangle", style: { marginRight: 4 } }), "Mode ini TIDAK mereset jadwal. Hanya mengisi/memperbaiki slot 3JP yang kosong atau salah penempatan."), status === 'processing' && /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 20,
       marginTop: 20
@@ -6040,6 +6696,461 @@ var GridJadwal = memo(function (_ref1) {
       return pa[1] < pb[1] ? -1 : pa[1] > pb[1] ? 1 : 0;
     });
   };
+  var doPrintA3 = function doPrintA3() {
+    // Rekap 1 halaman A3 landscape: semua mapel × semua guru
+    var tglCetak = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    var hariList = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+    // Urutkan kelas
+    var sortedKelas = sortKelasUrut(kelas);
+
+    // Urutkan mapel berdasarkan nama
+    var sortedMapel = mapel.slice().sort(function(a, b) { return (a.nama || '').localeCompare(b.nama || ''); });
+
+    // Urutkan guru: wali kelas dulu, lalu alfabetis
+    var parseKN = function(nama) {
+      var m = (nama || '').match(/(\d+)\s*([A-Za-z]*)/);
+      return m ? [parseInt(m[1]) || 0, (m[2] || '').toUpperCase()] : [999, nama || ''];
+    };
+    var sortedGuru = guru.slice().sort(function(g1, g2) {
+      var w1 = kelas.find(function(k){ return k.waliKelasId === g1.id; });
+      var w2 = kelas.find(function(k){ return k.waliKelasId === g2.id; });
+      var c1 = w1 ? 0 : 1, c2 = w2 ? 0 : 1;
+      if (c1 !== c2) return c1 - c2;
+      if (c1 === 0) {
+        var k1 = parseKN(w1.nama), k2 = parseKN(w2.nama);
+        if (k1[0] !== k2[0]) return k1[0] - k2[0];
+        if (k1[1] !== k2[1]) return k1[1] < k2[1] ? -1 : 1;
+      }
+      return (g1.nama || '').localeCompare(g2.nama || '');
+    });
+
+    // Hitung total JP per guru per mapel
+    var jpMatrix = {}; // jpMatrix[guruId][mapelId] = { kelas: [...], jp: N }
+    sortedGuru.forEach(function(g) { jpMatrix[g.id] = {}; });
+
+    sortedMapel.forEach(function(mp) {
+      sortedGuru.forEach(function(g) {
+        // Temukan assignment guru ini untuk mapel ini
+        var ass = assignments.filter(function(a) { return a.guruId === g.id && a.mapelId === mp.id; });
+        if (ass.length === 0) return;
+        // Hitung JP aktual dari jadwal
+        var totalJp = 0;
+        var kelasAjar = [];
+        ass.forEach(function(a) {
+          var kObj = kelas.find(function(k) { return k.id === a.kelasId; });
+          if (!kObj) return;
+          var jp = 0;
+          hariList.forEach(function(h) {
+            for (var j = 1; j <= JP_MAX; j++) {
+              var _sc, _jd;
+              if (!(_sc = slotConfig && slotConfig[a.kelasId] && slotConfig[a.kelasId][h] && slotConfig[a.kelasId][h][j])) continue;
+              var cell = jadwal && jadwal[a.kelasId] && jadwal[a.kelasId][h] && jadwal[a.kelasId][h][j];
+              if (cell && cell.guruId === g.id && cell.mapelId === mp.id) jp++;
+            }
+          });
+          if (jp > 0) { totalJp += jp; kelasAjar.push({ nama: kObj.nama, jp: jp }); }
+        });
+        if (totalJp > 0) {
+          jpMatrix[g.id][mp.id] = { jp: totalJp, kelas: kelasAjar };
+        }
+      });
+    });
+
+    // Hitung total JP per guru (semua mapel)
+    var totalJpGuru = {};
+    sortedGuru.forEach(function(g) {
+      var tot = 0;
+      sortedMapel.forEach(function(mp) {
+        if (jpMatrix[g.id][mp.id]) tot += jpMatrix[g.id][mp.id].jp;
+      });
+      totalJpGuru[g.id] = tot;
+    });
+
+    // Hitung total JP per mapel (semua guru)
+    var totalJpMapel = {};
+    sortedMapel.forEach(function(mp) {
+      var tot = 0;
+      sortedGuru.forEach(function(g) {
+        if (jpMatrix[g.id][mp.id]) tot += jpMatrix[g.id][mp.id].jp;
+      });
+      totalJpMapel[mp.id] = tot;
+    });
+
+    // Grand total
+    var grandTotal = sortedGuru.reduce(function(s, g) { return s + (totalJpGuru[g.id] || 0); }, 0);
+
+    // Warna per kolom mapel
+    var MAPEL_COLORS = [
+      '#dbeafe','#dcfce7','#fef9c3','#fce7f3','#ede9fe',
+      '#ffedd5','#cffafe','#d1fae5','#fef3c7','#fce7f3',
+      '#e0e7ff','#d1fae5','#fef9c3','#ffedd5','#cffafe'
+    ];
+    var MAPEL_HEADER_COLORS = [
+      '#2563eb','#16a34a','#ca8a04','#db2777','#7c3aed',
+      '#ea580c','#0891b2','#059669','#d97706','#db2777',
+      '#4f46e5','#059669','#ca8a04','#ea580c','#0891b2'
+    ];
+
+    // Build header mapel
+    var thMapel = sortedMapel.map(function(mp, i) {
+      var bg = MAPEL_HEADER_COLORS[i % MAPEL_HEADER_COLORS.length];
+      return '<th style="background:' + bg + ';color:#fff;font-family:\'Exo 2\',sans-serif;font-size:6.5pt;font-weight:900;padding:5px 3px;text-align:center;border:1px solid #ccc;min-width:52px;max-width:72px;word-break:break-word;line-height:1.3;">' + (mp.nama || '') + '</th>';
+    }).join('');
+    var thTotalJpMapel = '<td style="background:#1e293b;color:#fbbf24;font-family:\'Exo 2\',sans-serif;font-size:7pt;font-weight:900;padding:5px 3px;text-align:center;border:1px solid #ccc;">' +
+      sortedMapel.map(function(mp) {
+        return '<div style="font-size:7.5pt;font-weight:900;color:#fbbf24;">' + (totalJpMapel[mp.id] || 0) + ' JP</div>';
+      }).join('') +
+      '</td>';
+
+    // Build baris footer total per mapel
+    var tfMapel = sortedMapel.map(function(mp) {
+      var tot = totalJpMapel[mp.id] || 0;
+      return '<td style="background:#1e293b;color:#fbbf24;font-family:\'Exo 2\',sans-serif;font-size:8pt;font-weight:900;text-align:center;border:1px solid #334155;padding:4px 2px;">' + (tot > 0 ? tot + ' JP' : '<span style="color:#444;">—</span>') + '</td>';
+    }).join('');
+
+    // Build baris per guru
+    var rows = sortedGuru.map(function(g, gi) {
+      var waliK = kelas.find(function(k){ return k.waliKelasId === g.id; });
+      var rowBg = gi % 2 === 0 ? '#f8fafc' : '#fff';
+      var namaGuru = g.nama || '—';
+      var waliLabel = waliK ? '<div style="font-size:5.5pt;color:#7c3aed;font-weight:700;margin-top:2px;">Wali ' + waliK.nama + '</div>' : '';
+      var tdGuru = '<td style="background:' + (waliK ? '#f5f3ff' : rowBg) + ';padding:4px 6px;border:1px solid #e2e8f0;white-space:nowrap;font-size:7pt;font-weight:700;min-width:100px;"><div>' + namaGuru + '</div>' + waliLabel + '</td>';
+
+      var cells = sortedMapel.map(function(mp, i) {
+        var entry = jpMatrix[g.id][mp.id];
+        var bg = entry ? MAPEL_COLORS[i % MAPEL_COLORS.length] : rowBg;
+        var content = '';
+        if (entry) {
+          content = '<div style="font-family:\'Exo 2\',sans-serif;font-size:8pt;font-weight:900;color:#111;">' + entry.jp + ' JP</div>';
+          if (entry.kelas.length > 0) {
+            content += '<div style="font-size:5.5pt;color:#555;margin-top:1px;">' + entry.kelas.map(function(kk){ return kk.nama + '(' + kk.jp + ')'; }).join(', ') + '</div>';
+          }
+        } else {
+          content = '<span style="color:#ddd;font-size:8pt;">—</span>';
+        }
+        return '<td style="background:' + bg + ';text-align:center;padding:3px 2px;border:1px solid #e2e8f0;vertical-align:middle;">' + content + '</td>';
+      }).join('');
+
+      var totJp = totalJpGuru[g.id] || 0;
+      var tdTotal = '<td style="background:#0f172a;color:#00e5a0;font-family:\'Exo 2\',sans-serif;font-size:9pt;font-weight:900;text-align:center;padding:4px 6px;border:1px solid #1e293b;">' + (totJp > 0 ? totJp + ' JP' : '—') + '</td>';
+
+      return '<tr>' + tdGuru + cells + tdTotal + '</tr>';
+    }).join('');
+
+    var html = '<!DOCTYPE html>\n<html lang="id">\n<head>\n<meta charset="UTF-8">\n<title>Rekap Jadwal A3 \u2014 ' + akademik.namaSekolah + '</title>\n<style>\n  @import url(\'https://fonts.googleapis.com/css2?family=Exo+2:wght@400;700;800;900&family=Noto+Sans:wght@400;500;600&display=swap\');\n  *{box-sizing:border-box;margin:0;padding:0;}\n  html,body{background:#fff;font-family:\'Noto Sans\',sans-serif;}\n  @media print{\n    @page{size:A3 landscape;margin:8mm;}\n    html,body{background:#fff!important;}\n    body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}\n  }\n  .wrap{width:100%;background:#fff;padding:0;}\n  .page-head{padding:10px 0 8px;border-bottom:3px solid #0f172a;margin-bottom:10px;display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:8px;}\n  .school{font-family:\'Exo 2\',sans-serif;font-size:16pt;font-weight:900;letter-spacing:1px;color:#0f172a;line-height:1.1;}\n  .subtitle{font-family:\'Exo 2\',sans-serif;font-size:8pt;font-weight:700;color:#334155;letter-spacing:3px;margin-top:3px;}\n  .meta{font-size:7.5pt;color:#475569;margin-top:4px;}\n  .meta b{color:#0f172a;}\n  table{width:100%;border-collapse:collapse;}\n  .page-foot{margin-top:8px;padding-top:6px;border-top:2px solid #e2e8f0;display:flex;justify-content:space-between;font-size:7pt;color:#94a3b8;}\n</style>\n</head>\n<body>\n<div class="wrap">\n  <div class="page-head">\n    <div>\n      <div class="school">' + akademik.namaSekolah.toUpperCase() + '</div>\n      <div class="subtitle">REKAP JADWAL MENGAJAR — SEMUA MAPEL & SEMUA GURU — 1 HALAMAN A3</div>\n      <div class="meta">Tahun Ajaran: <b>' + (akademik.tahunAjaran || '—') + '</b> &nbsp;|&nbsp; Semester: <b>' + (akademik.semester ? akademik.semester.toUpperCase() : '—') + '</b> &nbsp;|&nbsp; Jumlah Kelas: <b>' + kelas.length + '</b> &nbsp;|&nbsp; Jumlah Guru: <b>' + sortedGuru.length + '</b> &nbsp;|&nbsp; Jumlah Mapel: <b>' + sortedMapel.length + '</b></div>\n    </div>\n    <div style="text-align:right;font-size:7pt;color:#64748b;"><div>Dicetak: <b>' + tglCetak + '</b></div><div style="margin-top:3px;font-family:\'Exo 2\';font-weight:900;font-size:8pt;color:#00b8d4;">SIMJAS PRO</div></div>\n  </div>\n  <table>\n    <thead>\n      <tr style="background:#0f172a;">\n        <th style="background:#0f172a;color:#00e5a0;font-family:\'Exo 2\',sans-serif;font-size:8pt;font-weight:900;padding:6px 8px;text-align:left;border:1px solid #1e293b;min-width:110px;">NAMA GURU</th>\n        ' + thMapel + '\n        <th style="background:#0f172a;color:#fbbf24;font-family:\'Exo 2\',sans-serif;font-size:8pt;font-weight:900;padding:6px 4px;text-align:center;border:1px solid #1e293b;min-width:48px;">TOTAL JP</th>\n      </tr>\n    </thead>\n    <tbody>\n      ' + rows + '\n      <tr style="border-top:3px solid #0f172a;">\n        <td style="background:#0f172a;color:#00e5a0;font-family:\'Exo 2\',sans-serif;font-size:8pt;font-weight:900;padding:5px 8px;border:1px solid #1e293b;">TOTAL JP MAPEL</td>\n        ' + tfMapel + '\n        <td style="background:#0f172a;color:#fbbf24;font-family:\'Exo 2\',sans-serif;font-size:10pt;font-weight:900;text-align:center;padding:5px 4px;border:1px solid #1e293b;">' + grandTotal + ' JP</td>\n      </tr>\n    </tbody>\n  </table>\n  <div class="page-foot">\n    <span>SIMJAS PRO \u2014 Rekap Jadwal Mengajar 1 Halaman A3</span>\n    <span>' + akademik.namaSekolah + ' \u2014 TA ' + (akademik.tahunAjaran || '—') + ' Sem. ' + (akademik.semester || '—') + '</span>\n    <span>Total: ' + grandTotal + ' JP \u2022 ' + sortedGuru.length + ' Guru \u2022 ' + sortedMapel.length + ' Mapel \u2022 ' + kelas.length + ' Kelas</span>\n  </div>\n</div>\n<script>window.onload=function(){window.focus();window.print();};<\/script>\n</body>\n</html>';
+
+    var win = window.open('', '_blank', 'width=1400,height=900,scrollbars=yes');
+    if (!win) { alert('Pop-up diblokir browser. Izinkan pop-up lalu coba lagi.'); return; }
+    win.document.write(html);
+    win.document.close();
+  };
+  var doPrintA3Jadwal = function doPrintA3Jadwal() {
+    // Layout baru: baris = Hari × Kelas (vertikal ke bawah), kolom = JP + Waktu (horizontal, terbatas)
+    var tglCetak = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    var hariList = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    var sortedKelas = sortKelasUrut(kelas);
+
+    // Helper waktu
+    var fmtMin = function(n) { return String(Math.floor(n/60)%24).padStart(2,'0')+':'+String(n%60).padStart(2,'0'); };
+    var cWaktuJp = function(k, jp) {
+      if (!k || !k.jamMasuk) return '';
+      var parts = k.jamMasuk.split(':').map(Number), tot = parts[0]*60+parts[1];
+      var ist1 = parseInt(k.jpIstirahat||4), dur1 = parseInt(k.durasiIstirahat||15);
+      var adaUpacara = jadwal && jadwal[k.id] && jadwal[k.id]['Senin'] && jadwal[k.id]['Senin'][1] && jadwal[k.id]['Senin'][1].isUpacara;
+      if (adaUpacara) {
+        var jamUpc = (settingGlobal && settingGlobal.jamUpacara) || k.jamMasuk;
+        var durUpc = parseInt((settingGlobal && settingGlobal.durasiUpacara)||60);
+        var uh=parseInt(jamUpc.split(':')[0]), um=parseInt(jamUpc.split(':')[1]);
+        tot = uh*60+um+durUpc;
+        for (var i=2;i<jp;i++){tot+=parseInt(k.durasiJp||35);if(i===ist1)tot+=dur1;}
+      } else {
+        for (var i=1;i<jp;i++){tot+=parseInt(k.durasiJp||35);if(i===ist1)tot+=dur1;}
+      }
+      return fmtMin(tot)+'\u2013'+fmtMin(tot+parseInt(k.durasiJp||35));
+    };
+
+    // Hitung maxJP global
+    var globalMaxJp = 1;
+    sortedKelas.forEach(function(k) {
+      hariList.forEach(function(h) {
+        for (var j=JP_MAX;j>=1;j--) {
+          if (slotConfig&&slotConfig[k.id]&&slotConfig[k.id][h]&&slotConfig[k.id][h][j]&&j>globalMaxJp) globalMaxJp=j;
+        }
+      });
+    });
+
+    // ── Singkat mapel jadi kode standar (MTK, B.IND, IPA, dst) ───────────
+    // Supaya kolom JP yang sempit tetap rapi & tabel tidak melebar.
+    var SK_MAPEL_ABR = {
+      'matematika': 'MTK',
+      'bahasa indonesia': 'B.IND',
+      'bahasa inggris': 'B.ING',
+      'pendidikan agama islam': 'PAI',
+      'pendidikan agama': 'PAG',
+      'ilmu pengetahuan alam': 'IPA',
+      'ilmu pengetahuan sosial': 'IPS',
+      'ipas': 'IPAS',
+      'pendidikan jasmani': 'PJOK',
+      'pendidikan jasmani olahraga dan kesehatan': 'PJOK',
+      'pjok': 'PJOK',
+      'penjas': 'PJOK',
+      'penjaskes': 'PJOK',
+      'seni budaya dan prakarya': 'SBdP',
+      'seni budaya': 'SBD',
+      'sbdp': 'SBdP',
+      'pendidikan pancasila': 'P.PNC',
+      'ppkn': 'PPKn',
+      'pkn': 'PKN',
+      'pancasila': 'PNC',
+      'prakarya': 'PKY',
+      'bahasa daerah': 'B.DAE',
+      'bahasa sunda': 'B.SND',
+      'bahasa arab': 'B.ARB',
+      'quran hadis': 'QH',
+      'al quran hadis': 'QH',
+      'aqidah akhlak': 'AA',
+      'fiqih': 'FQH',
+      'ski': 'SKI',
+      'sejarah kebudayaan islam': 'SKI',
+      'al quran': 'QRN',
+      'tahfidz': 'THF',
+      'hafalan': 'HFL',
+      'komputer': 'TIK',
+      'tik': 'TIK',
+      'informatika': 'INF',
+      'bimbingan konseling': 'BK',
+      'muatan lokal': 'MULOK',
+      'mulok': 'MULOK'
+    };
+    var snMapel = function(id) {
+      var m = mapel.find(function(x){return x.id===id;});
+      if (!m) return '\u2014';
+      var raw = (m.nama||'').trim();
+      var abr = SK_MAPEL_ABR[raw.toLowerCase()];
+      if (abr) return abr;
+      var fallback = raw
+        .replace('Bahasa ','Bhs. ').replace('Pendidikan ','Pend. ')
+        .replace('Jasmani','Jas.').replace('Olahraga','OR').replace('Kesehatan','Kes.')
+        .replace('Teknologi','Tek.').replace('Informasi','Info.')
+        .replace('Seni Budaya','Seni Bud.').replace('dan ','& ');
+      // Jaga-jaga kalau nama mapel tidak ada di kamus singkatan & masih kepanjangan
+      if (fallback.length > 11) {
+        var w = fallback.split(' ');
+        fallback = (w.length > 1 ? w[0] + ' ' + w[1] : fallback).slice(0, 11);
+      }
+      return fallback;
+    };
+
+    // ── Ganti nama guru di sel jadi NOMOR (G1, G2, dst) + daftar di bawah ──
+    // Supaya nama guru yang panjang tidak makan tempat di kolom JP yang sempit.
+    // Nomor diurutkan berdasarkan abjad nama guru, supaya konsisten & mudah dicari di daftar.
+    var guruIdSet = {};
+    sortedKelas.forEach(function(k) {
+      hariList.forEach(function(h) {
+        for (var j = 1; j <= JP_MAX; j++) {
+          var a = jadwal && jadwal[k.id] && jadwal[k.id][h] && jadwal[k.id][h][j];
+          if (a && !a.isUpacara && a.guruId) guruIdSet[a.guruId] = true;
+        }
+      });
+    });
+    var guruIdsUsed = Object.keys(guruIdSet).sort(function(a, b) {
+      var ga = guru.find(function(x){return x.id===a;});
+      var gb = guru.find(function(x){return x.id===b;});
+      var na = ga ? (ga.nama || '') : '';
+      var nb = gb ? (gb.nama || '') : '';
+      return na.localeCompare(nb);
+    });
+    var guruNumMap = {};
+    guruIdsUsed.forEach(function(id, idx) { guruNumMap[id] = idx + 1; });
+    var guruBadge = function(id) {
+      return guruNumMap[id] ? ('G' + guruNumMap[id]) : '?';
+    };
+
+    // Warna per hari
+    var HC = {
+      'Senin':  {hd:'#1e3a5f',ht:'#bfdbfe',bd:'#eff6ff',bl:'#93c5fd55'},
+      'Selasa': {hd:'#14532d',ht:'#bbf7d0',bd:'#f0fdf4',bl:'#86efac55'},
+      'Rabu':   {hd:'#713f12',ht:'#fde68a',bd:'#fffbeb',bl:'#fcd34d55'},
+      'Kamis':  {hd:'#4a1d96',ht:'#ddd6fe',bd:'#f5f3ff',bl:'#c4b5fd55'},
+      'Jumat':  {hd:'#7f1d1d',ht:'#fecaca',bd:'#fff1f2',bl:'#fca5a555'},
+      'Sabtu':  {hd:'#164e63',ht:'#a5f3fc',bd:'#ecfeff',bl:'#67e8f955'}
+    };
+
+    // ── Kelompokkan kelas berdasarkan jam masuk (shift pagi/siang) ──────
+    // Sekolah bisa punya kelas pagi & kelas siang dengan jam masuk berbeda.
+    // Waktu JP HARUS dihitung per kelompok jam masuknya sendiri — TIDAK
+    // disamakan/diambil dari kelas pertama (yang biasanya kelas pagi).
+    var shiftKey = function(k) {
+      return (k.jamMasuk || '07:00') + '|' + (k.durasiJp || 35) + '|' + (k.jpIstirahat || 4) + '|' + (k.durasiIstirahat || 15);
+    };
+    var jamToMin = function(jm) {
+      var p = (jm || '07:00').split(':').map(Number);
+      return (p[0] || 0) * 60 + (p[1] || 0);
+    };
+    var groupOrder = [];
+    var groupMap = {};
+    sortedKelas.forEach(function(k) {
+      var key = shiftKey(k);
+      if (!groupMap[key]) { groupMap[key] = []; groupOrder.push(key); }
+      groupMap[key].push(k);
+    });
+    var multiShift = groupOrder.length > 1;
+    // PAGI = kelompok dengan jam masuk paling awal. Kelompok lain yang jam masuknya
+    // BUKAN jam paling awal itu — sekalipun masih pagi hari seperti jam 09:00 —
+    // dianggap KELOMPOK SIANG, sesuai aturan sekolah (bukan jam 7 = siang).
+    var minStartMin = Infinity;
+    groupOrder.forEach(function(key) {
+      var rk = groupMap[key][0];
+      var st = jamToMin(rk.jamMasuk);
+      if (st < minStartMin) minStartMin = st;
+    });
+    var shiftLabel = function(jm) {
+      return (jamToMin(jm) === minStartMin) ? 'KELOMPOK PAGI' : 'KELOMPOK SIANG';
+    };
+
+    // ── Bangun 1 blok tabel per kelompok jam masuk (waktu real per kelompok) ──
+    var blocksHtml = '';
+    groupOrder.forEach(function(key, gi) {
+      var groupKelas = groupMap[key];
+      var refK = groupKelas[0];
+      var gIstJp  = parseInt((refK && refK.jpIstirahat) || 4);
+      var gDurIst = parseInt((refK && refK.durasiIstirahat) || 15);
+
+      // maxJP khusus kelompok ini (bukan global), agar kolom JP tidak melebar ke kelompok lain
+      var gMaxJp = 1;
+      groupKelas.forEach(function(k) {
+        hariList.forEach(function(h) {
+          for (var j = JP_MAX; j >= 1; j--) {
+            if (slotConfig && slotConfig[k.id] && slotConfig[k.id][h] && slotConfig[k.id][h][j] && j > gMaxJp) gMaxJp = j;
+          }
+        });
+      });
+
+      // Header kolom JP — waktu dihitung dari jam masuk KELOMPOK INI SENDIRI (real, bukan disamakan kelompok lain)
+      var thJP = '';
+      for (var jp = 1; jp <= gMaxJp; jp++) {
+        var wkt = refK ? cWaktuJp(refK, jp) : '';
+        var borderLeft = (jp === gIstJp + 1) ? 'border-left:3px solid #d97706;' : '';
+        thJP += '<th style="background:#0f172a;color:#00e5a0;font-family:\'Exo 2\',sans-serif;font-size:7.5pt;font-weight:900;padding:4px 3px;text-align:center;border:1px solid #1e293b;' + borderLeft + 'min-width:0;white-space:nowrap;">';
+        thJP += '<div>JP ' + jp + '</div>';
+        thJP += '<div style="font-size:5.5pt;opacity:.65;font-weight:600;margin-top:1px;">' + wkt + '</div>';
+        thJP += '</th>';
+      }
+
+      // Baris data: satu baris per (Hari, Kelas) — hanya kelas dalam kelompok jam masuk ini
+      var tbody = '';
+      hariList.forEach(function(hari) {
+        var c = HC[hari] || { hd: '#1e293b', ht: '#e2e8f0', bd: '#f8fafc', bl: '#e2e8f055' };
+        var nk = groupKelas.length;
+        groupKelas.forEach(function(k, ki) {
+          var isFirstKelas = (ki === 0);
+          var tdHari = '';
+          if (isFirstKelas) {
+            tdHari = '<td rowspan="' + nk + '" style="background:' + c.hd + ';color:' + c.ht + ';font-family:\'Exo 2\',sans-serif;font-size:9pt;font-weight:900;text-align:center;vertical-align:middle;padding:4px 6px;border:1px solid #1e293b;letter-spacing:1px;writing-mode:vertical-rl;text-orientation:mixed;transform:rotate(180deg);width:22px;">' + hari.toUpperCase() + '</td>';
+          }
+          var tdKelas = '<td style="background:' + c.hd + 'dd;color:' + c.ht + ';font-family:\'Exo 2\',sans-serif;font-size:7pt;font-weight:900;text-align:center;padding:3px 5px;border:1px solid #1e293b;white-space:nowrap;">' + k.nama + '</td>';
+
+          var tdCells = '';
+          for (var jp = 1; jp <= gMaxJp; jp++) {
+            var borderL = (jp === gIstJp + 1) ? 'border-left:3px solid #d97706;' : '';
+            var slotAktif = slotConfig && slotConfig[k.id] && slotConfig[k.id][hari] && slotConfig[k.id][hari][jp];
+            if (!slotAktif) {
+              tdCells += '<td style="background:#f1f5f9;border:1px solid #e2e8f0;' + borderL + 'text-align:center;"><span style="color:#cbd5e1;font-size:6pt;">\u2014</span></td>';
+              continue;
+            }
+            var ass = jadwal && jadwal[k.id] && jadwal[k.id][hari] && jadwal[k.id][hari][jp];
+            if (!ass) {
+              tdCells += '<td style="background:' + c.bd + ';border:1px solid ' + c.bl + ';' + borderL + '"></td>';
+              continue;
+            }
+            if (ass.isUpacara) {
+              tdCells += '<td style="background:#fff1f2;border:1px solid #fca5a5;' + borderL + 'text-align:center;padding:2px;"><div style="font-family:\'Exo 2\',sans-serif;font-size:5.5pt;font-weight:900;color:#be123c;line-height:1.3;">UPACARA</div></td>';
+              continue;
+            }
+            var mn = snMapel(ass.mapelId);
+            var gn = guruBadge(ass.guruId);
+            var isWali = kelas.some(function(kw) { return kw.waliKelasId === ass.guruId; });
+            var gnClr = isWali ? '#6d28d9' : '#475569';
+            tdCells += '<td style="background:' + c.bd + ';border:1px solid ' + c.bl + ';' + borderL + 'padding:2px 3px;text-align:center;vertical-align:middle;">'
+              + '<div style="font-family:\'Exo 2\',sans-serif;font-size:6.5pt;font-weight:900;color:#0f172a;line-height:1.25;">' + mn + '</div>'
+              + '<div style="font-size:5pt;color:' + gnClr + ';font-weight:600;margin-top:1px;line-height:1.2;">' + gn + '</div>'
+              + '</td>';
+          }
+
+          var isLastKelas = (ki === nk - 1);
+          var rowStyle = isLastKelas ? 'border-bottom:2px solid #334155;' : '';
+          tbody += '<tr style="' + rowStyle + '">' + tdHari + tdKelas + tdCells + '</tr>';
+        });
+      });
+
+      var labelTxt = shiftLabel(refK ? refK.jamMasuk : '07:00') + ' \u2014 Jam Masuk ' + (refK ? refK.jamMasuk : '\u2014') + ' WIB';
+      blocksHtml += '<div class="shift-block" style="margin-top:' + (gi > 0 ? '8px' : '0') + ';">';
+      if (multiShift) {
+        blocksHtml += '<div style="background:#0f172a;color:#00e5a0;font-family:\'Exo 2\',sans-serif;font-size:8pt;font-weight:900;padding:4px 10px;letter-spacing:.5px;display:flex;justify-content:space-between;">'
+          + '<span>\u25B8 ' + labelTxt + '</span><span style="opacity:.7;font-weight:600;">' + groupKelas.length + ' Kelas</span></div>';
+      }
+      blocksHtml += '<table><thead><tr>'
+        + '<th style="background:#0f172a;color:#00e5a0;font-family:\'Exo 2\',sans-serif;font-size:7pt;font-weight:900;padding:4px 3px;text-align:center;border:1px solid #1e293b;width:22px;">HARI</th>'
+        + '<th style="background:#0f172a;color:#00e5a0;font-family:\'Exo 2\',sans-serif;font-size:7pt;font-weight:900;padding:4px 6px;text-align:center;border:1px solid #1e293b;white-space:nowrap;">KELAS</th>'
+        + thJP
+        + '</tr></thead><tbody>' + tbody + '</tbody></table>';
+      blocksHtml += '</div>';
+    });
+
+    // ── Daftar kode guru (legend) ─────────────────────────────────────────
+    var legendHtml = '';
+    if (guruIdsUsed.length) {
+      var chips = guruIdsUsed.map(function(id) {
+        var g = guru.find(function(x){return x.id===id;});
+        var nmFull = g ? (g.nama || '\u2014') : '\u2014';
+        return '<span style="display:inline-flex;align-items:center;gap:3px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:3px;padding:1px 6px;margin:1px;font-size:6.5pt;white-space:nowrap;">'
+          + '<b style="color:#0f172a;">G' + guruNumMap[id] + '</b>'
+          + '<span style="color:#475569;">' + nmFull + '</span></span>';
+      }).join('');
+      legendHtml = '<div style="margin-top:6px;padding-top:5px;border-top:1.5px solid #cbd5e1;">'
+        + '<div style="font-size:6.5pt;font-weight:900;color:#0f172a;margin-bottom:3px;letter-spacing:.5px;">KETERANGAN KODE GURU (urut abjad nama)</div>'
+        + '<div style="display:flex;flex-wrap:wrap;">' + chips + '</div>'
+        + '</div>';
+    }
+
+    var html = '<!DOCTYPE html>\n<html lang="id">\n<head>\n<meta charset="UTF-8">'
+      + '<title>Jadwal A3 \u2014 ' + akademik.namaSekolah + '</title>\n<style>\n'
+      + '@import url(\'https://fonts.googleapis.com/css2?family=Exo+2:wght@400;700;800;900&family=Noto+Sans:wght@400;500;600&display=swap\');\n'
+      + '*{box-sizing:border-box;margin:0;padding:0;}\n'
+      + 'html,body{background:#fff;font-family:\'Noto Sans\',sans-serif;}\n'
+      + '@media print{@page{size:A3 landscape;margin:7mm;}html,body{background:#fff!important;}body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}.shift-block{page-break-inside:avoid;}}\n'
+      + '.wrap{width:100%;}\n'
+      + '.ph{padding:7px 0 6px;border-bottom:3px solid #0f172a;margin-bottom:7px;display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:5px;}\n'
+      + '.sch{font-family:\'Exo 2\',sans-serif;font-size:14pt;font-weight:900;letter-spacing:1px;color:#0f172a;}\n'
+      + '.sub{font-family:\'Exo 2\',sans-serif;font-size:7pt;font-weight:700;color:#334155;letter-spacing:3px;margin-top:2px;}\n'
+      + '.mt{font-size:6.5pt;color:#475569;margin-top:2px;}\n'
+      + 'table{width:100%;border-collapse:collapse;table-layout:fixed;}\n'
+      + '.pf{margin-top:6px;padding-top:4px;border-top:2px solid #e2e8f0;display:flex;justify-content:space-between;font-size:6pt;color:#94a3b8;}\n'
+      + '</style></head><body>\n'
+      + '<div class="wrap">\n'
+      + '<div class="ph"><div>'
+      + '<div class="sch">' + akademik.namaSekolah.toUpperCase() + '</div>'
+      + '<div class="sub">JADWAL PELAJARAN LENGKAP \u2014 SEMUA KELAS \u2014 A3 LANDSCAPE</div>'
+      + '<div class="mt">TA: <b>' + (akademik.tahunAjaran || '\u2014') + '</b> &nbsp;\u2022&nbsp; Semester: <b>' + (akademik.semester ? akademik.semester.toUpperCase() : '\u2014') + '</b> &nbsp;\u2022&nbsp; Kelas: <b>' + sortedKelas.length + '</b> &nbsp;\u2022&nbsp; Kelompok Jam Masuk: <b>' + groupOrder.length + '</b>' + (multiShift ? ' <span style="opacity:.75;">(waktu tiap blok dihitung dari jam masuk kelompoknya sendiri)</span>' : '') + '</div>'
+      + '</div>'
+      + '<div style="text-align:right;font-size:6pt;color:#64748b;"><div>Dicetak: <b>' + tglCetak + '</b></div><div style="font-family:\'Exo 2\';font-weight:900;font-size:7.5pt;color:#00b8d4;margin-top:2px;">SIMJAS PRO</div></div>'
+      + '</div>\n'
+      + blocksHtml
+      + legendHtml
+      + '\n<div class="pf">'
+      + '<span>SIMJAS PRO \u2014 Jadwal Pelajaran Lengkap A3</span>'
+      + '<span>' + akademik.namaSekolah + ' \u2014 TA ' + (akademik.tahunAjaran || '\u2014') + ' Sem. ' + (akademik.semester || '\u2014') + '</span>'
+      + '<span>' + sortedKelas.length + ' Kelas \u2022 ' + hariList.length + ' Hari \u2022 ' + groupOrder.length + ' Kelompok Jam Masuk</span>'
+      + '</div></div>'
+      + '<script>window.onload=function(){window.focus();window.print();};<\/script>'
+      + '</body></html>';
+
+    var win = window.open('', '_blank', 'width=1400,height=900,scrollbars=yes');
+    if (!win) { alert('Pop-up diblokir browser. Izinkan pop-up lalu coba lagi.'); return; }
+    win.document.write(html);
+    win.document.close();
+  };
   var doPrint = function doPrint() {
     // Tentukan kelas yang akan dicetak berdasarkan viewMode
     var targetKelas = viewMode === 'semua_kelas' ? sortKelasUrut(kelas) : viewMode === 'kelas' ? kelas.filter(function (k) {
@@ -6184,6 +7295,305 @@ var GridJadwal = memo(function (_ref1) {
       alert('Pop-up diblokir browser. Izinkan pop-up untuk halaman ini dan coba lagi.');
       return;
     }
+    win.document.write(html);
+    win.document.close();
+  };
+  var doPrintF4NoGuru = function doPrintF4NoGuru() {
+    // Tentukan kelas yang akan dicetak berdasarkan viewMode
+    var targetKelas = viewMode === 'semua_kelas' ? sortKelasUrut(kelas) : viewMode === 'kelas' ? kelas.filter(function (k) {
+      return k.id === selId;
+    }) : [];
+    if (targetKelas.length === 0) {
+      alert('Tidak ada jadwal kelas untuk dicetak. Mode Jadwal Guru tidak didukung cetak per halaman.');
+      return;
+    }
+
+    // Helper
+    var mNm = function mNm(id) {
+      var _mapel$find4;
+      return ((_mapel$find4 = mapel.find(function (m) {
+        return m.id === id;
+      })) === null || _mapel$find4 === void 0 ? void 0 : _mapel$find4.nama) || '—';
+    };
+    var gNm = function gNm(id) {
+      var _guru$find7;
+      return ((_guru$find7 = guru.find(function (g) {
+        return g.id === id;
+      })) === null || _guru$find7 === void 0 ? void 0 : _guru$find7.nama) || '—';
+    };
+    var cTime = function cTime(k, jp) {
+      var _jadwal$k$id6;
+      if (!(k !== null && k !== void 0 && k.jamMasuk)) return '';
+      var adaUpacara = jadwal === null || jadwal === void 0 || (_jadwal$k$id6 = jadwal[k.id]) === null || _jadwal$k$id6 === void 0 || (_jadwal$k$id6 = _jadwal$k$id6['Senin']) === null || _jadwal$k$id6 === void 0 || (_jadwal$k$id6 = _jadwal$k$id6[1]) === null || _jadwal$k$id6 === void 0 ? void 0 : _jadwal$k$id6.isUpacara;
+      var jamUpc = (settingGlobal === null || settingGlobal === void 0 ? void 0 : settingGlobal.jamUpacara) || k.jamMasuk;
+      var durUpc = parseInt((settingGlobal === null || settingGlobal === void 0 ? void 0 : settingGlobal.durasiUpacara) || 60);
+      var tot;
+      if (adaUpacara) {
+        var _jamUpc$split$map3 = jamUpc.split(':').map(Number),
+          _jamUpc$split$map4 = _slicedToArray(_jamUpc$split$map3, 2),
+          uh = _jamUpc$split$map4[0],
+          um = _jamUpc$split$map4[1];
+        tot = uh * 60 + um + durUpc;
+        var ist1 = parseInt(k.jpIstirahat || 4),
+          dur1 = parseInt(k.durasiIstirahat || 15);
+        for (var i = 2; i < jp; i++) {
+          tot += parseInt(k.durasiJp || 35);
+          if (i === ist1) tot += dur1;
+        }
+      } else {
+        var _k$jamMasuk$split$map3 = k.jamMasuk.split(':').map(Number),
+          _k$jamMasuk$split$map4 = _slicedToArray(_k$jamMasuk$split$map3, 2),
+          h = _k$jamMasuk$split$map4[0],
+          m = _k$jamMasuk$split$map4[1];
+        tot = h * 60 + m;
+        var _ist2 = parseInt(k.jpIstirahat || 4),
+          _dur2 = parseInt(k.durasiIstirahat || 15);
+        for (var _i3 = 1; _i3 < jp; _i3++) {
+          tot += parseInt(k.durasiJp || 35);
+          if (_i3 === _ist2) tot += _dur2;
+        }
+      }
+      var f = function f(n) {
+        return "".concat(String(Math.floor(n / 60) % 24).padStart(2, '0'), ":").concat(String(n % 60).padStart(2, '0'));
+      };
+      return "".concat(f(tot), "\u2013").concat(f(tot + parseInt(k.durasiJp || 35)));
+    };
+
+    // Buat HTML setiap kelas
+    var hariCetak = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    var pagesHtml = '';
+    targetKelas.forEach(function (k, ki) {
+      // Hitung max JP aktif
+      var maxJp = 1;
+      hariCetak.forEach(function (h) {
+        for (var j = JP_MAX; j >= 1; j--) {
+          var _slotConfig$k$id3;
+          if (slotConfig !== null && slotConfig !== void 0 && (_slotConfig$k$id3 = slotConfig[k.id]) !== null && _slotConfig$k$id3 !== void 0 && (_slotConfig$k$id3 = _slotConfig$k$id3[h]) !== null && _slotConfig$k$id3 !== void 0 && _slotConfig$k$id3[j] && j > maxJp) maxJp = j;
+        }
+      });
+
+      // Baris header hari
+      var thHari = hariCetak.map(function (h) {
+        return "<th>".concat(h, "</th>");
+      }).join('');
+
+      // Baris data JP
+      var rows = '';
+      var _loop3 = function _loop3(jp) {
+        var _jadwal$k$id7;
+        // Cek apakah baris ini adalah baris upacara (Senin JP1 ada upacara di kelas ini)
+        var isUpacaraRow = jp === 1 && (jadwal === null || jadwal === void 0 || (_jadwal$k$id7 = jadwal[k.id]) === null || _jadwal$k$id7 === void 0 || (_jadwal$k$id7 = _jadwal$k$id7['Senin']) === null || _jadwal$k$id7 === void 0 || (_jadwal$k$id7 = _jadwal$k$id7[1]) === null || _jadwal$k$id7 === void 0 ? void 0 : _jadwal$k$id7.isUpacara);
+        var waktu;
+        if (isUpacaraRow) {
+          var jamUpc = (settingGlobal === null || settingGlobal === void 0 ? void 0 : settingGlobal.jamUpacara) || '07:00';
+          var durUpc = parseInt((settingGlobal === null || settingGlobal === void 0 ? void 0 : settingGlobal.durasiUpacara) || 60);
+          var _jamUpc$split$map5 = jamUpc.split(':').map(Number),
+            _jamUpc$split$map6 = _slicedToArray(_jamUpc$split$map5, 2),
+            uh = _jamUpc$split$map6[0],
+            um = _jamUpc$split$map6[1];
+          var selesaiUpc = uh * 60 + um + durUpc;
+          waktu = "".concat(jamUpc, "\u2013").concat(String(Math.floor(selesaiUpc / 60) % 24).padStart(2, '0'), ":").concat(String(selesaiUpc % 60).padStart(2, '0'));
+        } else {
+          waktu = cTime(k, jp);
+        }
+        var cells = hariCetak.map(function (h) {
+          var _slotConfig$k$id4, _jadwal$k$id8;
+          if (!(slotConfig !== null && slotConfig !== void 0 && (_slotConfig$k$id4 = slotConfig[k.id]) !== null && _slotConfig$k$id4 !== void 0 && (_slotConfig$k$id4 = _slotConfig$k$id4[h]) !== null && _slotConfig$k$id4 !== void 0 && _slotConfig$k$id4[jp])) return "<td class=\"td-off\">\u2014</td>";
+          var ass = jadwal === null || jadwal === void 0 || (_jadwal$k$id8 = jadwal[k.id]) === null || _jadwal$k$id8 === void 0 || (_jadwal$k$id8 = _jadwal$k$id8[h]) === null || _jadwal$k$id8 === void 0 ? void 0 : _jadwal$k$id8[jp];
+          if (!ass) return "<td class=\"td-empty\"></td>";
+          if (ass.isUpacara) {
+            var _jamUpc = (settingGlobal === null || settingGlobal === void 0 ? void 0 : settingGlobal.jamUpacara) || '07:00';
+            var _durUpc = parseInt((settingGlobal === null || settingGlobal === void 0 ? void 0 : settingGlobal.durasiUpacara) || 60);
+            var _jamUpc$split$map7 = _jamUpc.split(':').map(Number),
+              _jamUpc$split$map8 = _slicedToArray(_jamUpc$split$map7, 2),
+              _uh = _jamUpc$split$map8[0],
+              _um = _jamUpc$split$map8[1];
+            var _selesaiUpc = _uh * 60 + _um + _durUpc;
+            var uTimeStr = "".concat(_jamUpc, "\u2013").concat(String(Math.floor(_selesaiUpc / 60) % 24).padStart(2, '0'), ":").concat(String(_selesaiUpc % 60).padStart(2, '0'));
+            return "<td class=\"td-upacara\">UPACARA<br>BENDERA<br><span style=\"font-size:8pt;font-weight:600;\">".concat(uTimeStr, " WIB</span></td>");
+          }
+          var isWaliCell = kelas.some(function (kw) {
+            return kw.waliKelasId === ass.guruId;
+          });
+          return "<td class=\"td-mapel\"><span class=\"mn\">".concat(mNm(ass.mapelId), "</span></td>");
+        }).join('');
+        var isIst3 = jp === parseInt(k.jpIstirahat || 4);
+        rows += "<tr>\n          <td class=\"td-jp\"><div class=\"jp-num\">JP ".concat(jp, "</div><div class=\"jp-time\">").concat(waktu, "</div></td>\n          ").concat(cells, "\n        </tr>");
+        if (isIst3 && jp < maxJp) {
+          var durIst3 = parseInt(k.durasiIstirahat || 15);
+          var numCols3 = hariCetak.length + 1;
+          rows += "<tr><td colspan=\"".concat(numCols3, "\" style=\"background:#fff8e1;text-align:center;font-size:8pt;font-weight:700;color:#888;padding:4px 0;letter-spacing:2px;border-top:2px dashed #ccc;border-bottom:2px dashed #ccc;\">\u2615 ISTIRAHAT \xB7 ").concat(durIst3, " menit</td></tr>");
+        }
+      };
+      for (var jp = 1; jp <= maxJp; jp++) {
+        _loop3(jp);
+      }
+      var isLast = ki === targetKelas.length - 1;
+      pagesHtml += "\n        <div class=\"page\" style=\"".concat(isLast ? 'break-after:auto;page-break-after:auto;' : 'break-after:page;page-break-after:always;', "\">\n          <div class=\"page-header\">\n            <div class=\"school-name\">").concat(akademik.namaSekolah.toUpperCase(), "</div>\n            <div class=\"doc-title\">JADWAL PELAJARAN</div>\n            <div class=\"class-badge\">").concat(k.nama.toUpperCase(), "</div>\n            <div class=\"meta-row\">\n              <span>Tahun Ajaran: <strong>").concat(akademik.tahunAjaran || '—', "</strong></span>\n              <span>Semester: <strong>").concat(akademik.semester ? akademik.semester.toUpperCase() : '—', "</strong></span>\n              <span>Jam Masuk: <strong>").concat(k.jamMasuk, " WIB</strong></span>\n              <span>Durasi/JP: <strong>").concat(k.durasiJp, " menit</strong></span>\n            </div>\n          </div>\n          <table>\n            <thead><tr><th class=\"th-jp\">JP / Waktu</th>").concat(thHari, "</tr></thead>\n            <tbody>").concat(rows, "</tbody>\n          </table>\n          <div class=\"page-footer\">\n            <span>Dicetak: ").concat(new Date().toLocaleDateString('id-ID', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      }), "</span>\n            <span>SIMJAS PRO v3.7</span>\n            <span>Halaman ").concat(ki + 1, " dari ").concat(targetKelas.length, "</span>\n          </div>\n        </div>");
+    });
+    var html = "<!DOCTYPE html>\n<html lang=\"id\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Cetak Jadwal F4 \u2014 ".concat(akademik.namaSekolah, "</title>\n<style>\n  @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@700;800;900&family=Noto+Sans:wght@400;500;600;700&display=swap');\n  * { box-sizing: border-box; margin: 0; padding: 0; }\n  html, body { background: #fff; color: #000; font-family: 'Noto Sans', sans-serif; }\n\n  .page {\n    width: 100%;\n    padding: 14mm 12mm 10mm;\n    display: flex;\n    flex-direction: column;\n    gap: 10px;\n  }\n  .last-page { break-after: auto; page-break-after: auto; }\n\n  /* HEADER */\n  .page-header {\n    text-align: center;\n    border-bottom: 3px double #000;\n    padding-bottom: 8px;\n    margin-bottom: 4px;\n  }\n  .school-name {\n    font-family: 'Exo 2', sans-serif;\n    font-size: 15pt;\n    font-weight: 900;\n    letter-spacing: 1.5px;\n    color: #000;\n    line-height: 1.2;\n  }\n  .doc-title {\n    font-family: 'Exo 2', sans-serif;\n    font-size: 11pt;\n    font-weight: 700;\n    color: #333;\n    letter-spacing: 3px;\n    margin-top: 2px;\n    text-transform: uppercase;\n  }\n  .class-badge {\n    display: inline-block;\n    font-family: 'Exo 2', sans-serif;\n    font-size: 20pt;\n    font-weight: 900;\n    color: #000;\n    border: 3px solid #000;\n    padding: 2px 24px;\n    border-radius: 6px;\n    margin: 6px 0 4px;\n    letter-spacing: 2px;\n  }\n  .meta-row {\n    display: flex;\n    justify-content: center;\n    flex-wrap: wrap;\n    gap: 0 20px;\n    font-size: 8.5pt;\n    color: #333;\n    margin-top: 4px;\n  }\n  .meta-row strong { color: #000; }\n\n  /* TABLE */\n  table {\n    width: 100%;\n    border-collapse: collapse;\n    flex: 1;\n    table-layout: fixed;\n  }\n  th, td {\n    border: 1.2px solid #000;\n    vertical-align: middle;\n    text-align: center;\n    word-break: break-word;\n    hyphens: auto;\n  }\n  thead tr { background: #1a1a1a; }\n  th {\n    font-family: 'Exo 2', sans-serif;\n    font-size: 10pt;\n    font-weight: 900;\n    color: #fff;\n    padding: 7px 4px;\n    letter-spacing: 0.5px;\n  }\n  th.th-jp {\n    width: 68px;\n    background: #111;\n  }\n\n  /* ROW ZEBRA */\n  tbody tr:nth-child(odd) { background: #f8f8f8; }\n  tbody tr:nth-child(even) { background: #fff; }\n\n  /* CELLS */\n  .td-jp {\n    background: #111 !important;\n    padding: 5px 3px;\n  }\n  .jp-num {\n    font-family: 'Exo 2', sans-serif;\n    font-size: 10pt;\n    font-weight: 900;\n    color: #fff;\n    line-height: 1.2;\n  }\n  .jp-time {\n    font-size: 7pt;\n    color: #bbb;\n    margin-top: 2px;\n    font-weight: 600;\n    white-space: nowrap;\n  }\n  .td-off {\n    background: #e8e8e8 !important;\n    color: #999;\n    font-size: 12pt;\n    font-weight: 700;\n  }\n  .td-empty {\n    background: #fff !important;\n  }\n  .td-upacara {\n    background: #fff0f0 !important;\n    font-family: 'Exo 2', sans-serif;\n    font-size: 8pt;\n    font-weight: 900;\n    color: #c00;\n    letter-spacing: 0.5px;\n    padding: 4px;\n    line-height: 1.3;\n  }\n  .td-mapel {\n    padding: 4px 5px;\n  }\n  .mn {\n    display: block;\n    font-family: 'Exo 2', sans-serif;\n    font-size: 9pt;\n    font-weight: 900;\n    color: #000;\n    line-height: 1.3;\n    margin-bottom: 2px;\n  }\n  .gn {\n    display: block;\n    font-size: 7.5pt;\n    font-weight: 600;\n    color: #444;\n    line-height: 1.3;\n  }\n  .gn-wali {\n    color: #7c3aed !important;\n    font-weight: 900 !important;\n  }\n\n  /* FOOTER */\n  .page-footer {\n    display: flex;\n    justify-content: space-between;\n    align-items: center;\n    font-size: 7.5pt;\n    color: #666;\n    border-top: 1px solid #ccc;\n    padding-top: 5px;\n    margin-top: 4px;\n  }\n\n  @media print {\n    @page { size: 330mm 215mm; margin: 8mm; }\n    body { background: #fff !important; }\n    .page { padding: 0; }\n    .page-footer { color: #888 !important; }\n  }\n</style>\n</head>\n<body>\n").concat(pagesHtml, "\n<script>\n  window.onload = function() {\n    window.focus();\n    window.print();\n  };\n<\/script>\n</body>\n</html>");
+    var win = window.open('', '_blank', 'width=1100,height=800,scrollbars=yes');
+    if (!win) {
+      alert('Pop-up diblokir browser. Izinkan pop-up untuk halaman ini dan coba lagi.');
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+  };
+  var doPrintF4PortraitNoGuru = function doPrintF4PortraitNoGuru() {
+    var targetKelas = viewMode === 'semua_kelas' ? sortKelasUrut(kelas) : viewMode === 'kelas' ? kelas.filter(function (k) {
+      return k.id === selId;
+    }) : [];
+    if (targetKelas.length === 0) {
+      alert('Tidak ada jadwal kelas untuk dicetak. Mode Jadwal Guru tidak didukung cetak per halaman.');
+      return;
+    }
+    var mNm = function mNm(id) {
+      var _mapel$find_p;
+      return ((_mapel$find_p = mapel.find(function (m) { return m.id === id; })) === null || _mapel$find_p === void 0 ? void 0 : _mapel$find_p.nama) || '—';
+    };
+    var cTime = function cTime(k, jp) {
+      var _jadwal$k$id_p;
+      if (!(k !== null && k !== void 0 && k.jamMasuk)) return '';
+      var adaUpacara = jadwal === null || jadwal === void 0 || (_jadwal$k$id_p = jadwal[k.id]) === null || _jadwal$k$id_p === void 0 || (_jadwal$k$id_p = _jadwal$k$id_p['Senin']) === null || _jadwal$k$id_p === void 0 || (_jadwal$k$id_p = _jadwal$k$id_p[1]) === null || _jadwal$k$id_p === void 0 ? void 0 : _jadwal$k$id_p.isUpacara;
+      var jamUpc = (settingGlobal === null || settingGlobal === void 0 ? void 0 : settingGlobal.jamUpacara) || k.jamMasuk;
+      var durUpc = parseInt((settingGlobal === null || settingGlobal === void 0 ? void 0 : settingGlobal.durasiUpacara) || 60);
+      var tot;
+      if (adaUpacara) {
+        var _sp = jamUpc.split(':').map(Number), uh = _sp[0], um = _sp[1];
+        tot = uh * 60 + um + durUpc;
+        var ist1 = parseInt(k.jpIstirahat || 4), dur1 = parseInt(k.durasiIstirahat || 15);
+        for (var i = 2; i < jp; i++) { tot += parseInt(k.durasiJp || 35); if (i === ist1) tot += dur1; }
+      } else {
+        var _sp2 = k.jamMasuk.split(':').map(Number), h = _sp2[0], m = _sp2[1];
+        tot = h * 60 + m;
+        var _ist2 = parseInt(k.jpIstirahat || 4), _dur2 = parseInt(k.durasiIstirahat || 15);
+        for (var _i3 = 1; _i3 < jp; _i3++) { tot += parseInt(k.durasiJp || 35); if (_i3 === _ist2) tot += _dur2; }
+      }
+      var f = function f(n) { return "".concat(String(Math.floor(n / 60) % 24).padStart(2, '0'), ":").concat(String(n % 60).padStart(2, '0')); };
+      return "".concat(f(tot), "\u2013").concat(f(tot + parseInt(k.durasiJp || 35)));
+    };
+    var hariCetak = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    var pagesHtml = '';
+    targetKelas.forEach(function (k, ki) {
+      var maxJp = 1;
+      hariCetak.forEach(function (h) {
+        for (var j = JP_MAX; j >= 1; j--) {
+          var _sc;
+          if (slotConfig !== null && slotConfig !== void 0 && (_sc = slotConfig[k.id]) !== null && _sc !== void 0 && (_sc = _sc[h]) !== null && _sc !== void 0 && _sc[j] && j > maxJp) maxJp = j;
+        }
+      });
+      var thHari = hariCetak.map(function (h) { return "<th>".concat(h, "</th>"); }).join('');
+      var rows = '';
+      var _loopP = function _loopP(jp) {
+        var _jk;
+        var isUpacaraRow = jp === 1 && (jadwal === null || jadwal === void 0 || (_jk = jadwal[k.id]) === null || _jk === void 0 || (_jk = _jk['Senin']) === null || _jk === void 0 || (_jk = _jk[1]) === null || _jk === void 0 ? void 0 : _jk.isUpacara);
+        var waktu;
+        if (isUpacaraRow) {
+          var jamUpc2 = (settingGlobal === null || settingGlobal === void 0 ? void 0 : settingGlobal.jamUpacara) || '07:00';
+          var durUpc2 = parseInt((settingGlobal === null || settingGlobal === void 0 ? void 0 : settingGlobal.durasiUpacara) || 60);
+          var _sp3 = jamUpc2.split(':').map(Number), uh2 = _sp3[0], um2 = _sp3[1];
+          var selesai2 = uh2 * 60 + um2 + durUpc2;
+          waktu = "".concat(jamUpc2, "\u2013").concat(String(Math.floor(selesai2 / 60) % 24).padStart(2, '0'), ":").concat(String(selesai2 % 60).padStart(2, '0'));
+        } else { waktu = cTime(k, jp); }
+        var cells = hariCetak.map(function (h) {
+          var _sc2, _jk2;
+          if (!(slotConfig !== null && slotConfig !== void 0 && (_sc2 = slotConfig[k.id]) !== null && _sc2 !== void 0 && (_sc2 = _sc2[h]) !== null && _sc2 !== void 0 && _sc2[jp])) return "<td class=\"td-off\">\u2014</td>";
+          var ass = jadwal === null || jadwal === void 0 || (_jk2 = jadwal[k.id]) === null || _jk2 === void 0 || (_jk2 = _jk2[h]) === null || _jk2 === void 0 ? void 0 : _jk2[jp];
+          if (!ass) return "<td class=\"td-empty\"></td>";
+          if (ass.isUpacara) {
+            var _ju = (settingGlobal === null || settingGlobal === void 0 ? void 0 : settingGlobal.jamUpacara) || '07:00';
+            var _du = parseInt((settingGlobal === null || settingGlobal === void 0 ? void 0 : settingGlobal.durasiUpacara) || 60);
+            var _sp4 = _ju.split(':').map(Number), _uh = _sp4[0], _um = _sp4[1];
+            var _sel = _uh * 60 + _um + _du;
+            return "<td class=\"td-upacara\">UPACARA<br>BENDERA<br><span style=\"font-size:8pt;font-weight:600;\">".concat(_ju, "\u2013").concat(String(Math.floor(_sel / 60) % 24).padStart(2, '0'), ":").concat(String(_sel % 60).padStart(2, '0'), " WIB</span></td>");
+          }
+          return "<td class=\"td-mapel\"><span class=\"mn\">".concat(mNm(ass.mapelId), "</span></td>");
+        }).join('');
+        var isIstP = jp === parseInt(k.jpIstirahat || 4);
+        rows += "<tr><td class=\"td-jp\"><div class=\"jp-num\">JP ".concat(jp, "</div><div class=\"jp-time\">").concat(waktu, "</div></td>").concat(cells, "</tr>");
+        if (isIstP && jp < maxJp) {
+          rows += "<tr><td colspan=\"".concat(hariCetak.length + 1, "\" style=\"background:#fff8e1;text-align:center;font-size:8pt;font-weight:700;color:#888;padding:4px 0;letter-spacing:2px;border-top:2px dashed #ccc;border-bottom:2px dashed #ccc;\">\u2615 ISTIRAHAT \xB7 ").concat(parseInt(k.durasiIstirahat || 15), " menit</td></tr>");
+        }
+      };
+      for (var jp = 1; jp <= maxJp; jp++) { _loopP(jp); }
+      var isLast = ki === targetKelas.length - 1;
+      pagesHtml += "<div class=\"page\" style=\"".concat(isLast ? 'break-after:auto;page-break-after:auto;' : 'break-after:page;page-break-after:always;', "\">\n          <div class=\"page-header\">\n            <div class=\"school-name\">").concat(akademik.namaSekolah.toUpperCase(), "</div>\n            <div class=\"doc-title\">JADWAL PELAJARAN</div>\n            <div class=\"class-badge\">").concat(k.nama.toUpperCase(), "</div>\n            <div class=\"meta-row\">\n              <span>Tahun Ajaran: <strong>").concat(akademik.tahunAjaran || '—', "</strong></span>\n              <span>Semester: <strong>").concat(akademik.semester ? akademik.semester.toUpperCase() : '—', "</strong></span>\n              <span>Jam Masuk: <strong>").concat(k.jamMasuk, " WIB</strong></span>\n              <span>Durasi/JP: <strong>").concat(k.durasiJp, " menit</strong></span>\n            </div>\n          </div>\n          <table>\n            <thead><tr><th class=\"th-jp\">JP / Waktu</th>").concat(thHari, "</tr></thead>\n            <tbody>").concat(rows, "</tbody>\n          </table>\n          <div class=\"page-footer\">\n            <span>Dicetak: ").concat(new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }), "</span>\n            <span>SIMJAS PRO v3.7</span>\n            <span>Halaman ").concat(ki + 1, " dari ").concat(targetKelas.length, "</span>\n          </div>\n        </div>");
+    });
+    var html = "<!DOCTYPE html>\n<html lang=\"id\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Cetak Jadwal F4 Portrait \u2014 ".concat(akademik.namaSekolah, "</title>\n<style>\n  @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@700;800;900&family=Noto+Sans:wght@400;500;600;700&display=swap');\n  * { box-sizing: border-box; margin: 0; padding: 0; }\n  html, body { background: #fff; color: #000; font-family: 'Noto Sans', sans-serif; }\n  .page { width: 100%; padding: 14mm 12mm 10mm; display: flex; flex-direction: column; gap: 10px; }\n  .page-header { text-align: center; border-bottom: 3px double #000; padding-bottom: 8px; margin-bottom: 4px; }\n  .school-name { font-family: 'Exo 2', sans-serif; font-size: 14pt; font-weight: 900; letter-spacing: 1.5px; color: #000; line-height: 1.2; }\n  .doc-title { font-family: 'Exo 2', sans-serif; font-size: 10pt; font-weight: 700; color: #333; letter-spacing: 3px; margin-top: 2px; text-transform: uppercase; }\n  .class-badge { display: inline-block; font-family: 'Exo 2', sans-serif; font-size: 18pt; font-weight: 900; color: #000; border: 3px solid #000; padding: 2px 20px; border-radius: 6px; margin: 6px 0 4px; letter-spacing: 2px; }\n  .meta-row { display: flex; justify-content: center; flex-wrap: wrap; gap: 0 16px; font-size: 8pt; color: #333; margin-top: 4px; }\n  .meta-row strong { color: #000; }\n  table { width: 100%; border-collapse: collapse; flex: 1; table-layout: fixed; }\n  th, td { border: 1.2px solid #000; vertical-align: middle; text-align: center; word-break: break-word; hyphens: auto; }\n  thead tr { background: #1a1a1a; }\n  th { font-family: 'Exo 2', sans-serif; font-size: 9pt; font-weight: 900; color: #fff; padding: 6px 3px; letter-spacing: 0.5px; }\n  th.th-jp { width: 60px; background: #111; }\n  tbody tr:nth-child(odd) { background: #f8f8f8; }\n  tbody tr:nth-child(even) { background: #fff; }\n  .td-jp { background: #111 !important; padding: 4px 2px; }\n  .jp-num { font-family: 'Exo 2', sans-serif; font-size: 9pt; font-weight: 900; color: #fff; line-height: 1.2; }\n  .jp-time { font-size: 7pt; color: #bbb; margin-top: 2px; font-weight: 600; white-space: nowrap; }\n  .td-off { background: #e8e8e8 !important; color: #999; font-size: 11pt; font-weight: 700; }\n  .td-empty { background: #fff !important; }\n  .td-upacara { background: #fff0f0 !important; font-family: 'Exo 2', sans-serif; font-size: 7.5pt; font-weight: 900; color: #c00; letter-spacing: 0.5px; padding: 4px; line-height: 1.3; }\n  .td-mapel { padding: 4px 4px; }\n  .mn { display: block; font-family: 'Exo 2', sans-serif; font-size: 8.5pt; font-weight: 900; color: #000; line-height: 1.3; }\n  .page-footer { display: flex; justify-content: space-between; align-items: center; font-size: 7pt; color: #666; border-top: 1px solid #ccc; padding-top: 5px; margin-top: 4px; }\n  @media print {\n    @page { size: 210mm 330mm; margin: 8mm; }\n    body { background: #fff !important; }\n    .page { padding: 0; }\n    .page-footer { color: #888 !important; }\n  }\n</style>\n</head>\n<body>\n").concat(pagesHtml, "\n<script>\n  window.onload = function() { window.focus(); window.print(); };\n<\/script>\n</body>\n</html>");
+    var win = window.open('', '_blank', 'width=900,height=1200,scrollbars=yes');
+    if (!win) { alert('Pop-up diblokir browser. Izinkan pop-up untuk halaman ini dan coba lagi.'); return; }
+    win.document.write(html);
+    win.document.close();
+  };
+  var doPrintF4Portrait2PerPage = function doPrintF4Portrait2PerPage() {
+    var targetKelas = viewMode === 'semua_kelas' ? sortKelasUrut(kelas) : viewMode === 'kelas' ? kelas.filter(function (k) { return k.id === selId; }) : [];
+    if (targetKelas.length === 0) { alert('Tidak ada jadwal kelas untuk dicetak.'); return; }
+    var mNm = function mNm(id) { var _m; return ((_m = mapel.find(function (m) { return m.id === id; })) === null || _m === void 0 ? void 0 : _m.nama) || '—'; };
+    var gNm2 = function gNm2(id) { var _g; return ((_g = guru.find(function (g) { return g.id === id; })) === null || _g === void 0 ? void 0 : _g.nama) || '—'; };
+    var cTime2 = function cTime2(k, jp) {
+      var _jk;
+      if (!k.jamMasuk) return '';
+      var adaUpc = (_jk = jadwal === null || jadwal === void 0 ? void 0 : jadwal[k.id]) === null || _jk === void 0 ? void 0 : (_jk = _jk['Senin']) === null || _jk === void 0 ? void 0 : (_jk = _jk[1]) === null || _jk === void 0 ? void 0 : _jk.isUpacara;
+      var jamUpc = (settingGlobal === null || settingGlobal === void 0 ? void 0 : settingGlobal.jamUpacara) || k.jamMasuk;
+      var durUpc = parseInt((settingGlobal === null || settingGlobal === void 0 ? void 0 : settingGlobal.durasiUpacara) || 60);
+      var tot; var ist = parseInt(k.jpIstirahat || 4); var dur = parseInt(k.durasiIstirahat || 15);
+      if (adaUpc) { var _s = jamUpc.split(':').map(Number); tot = _s[0]*60+_s[1]+durUpc; for (var i=2;i<jp;i++){tot+=parseInt(k.durasiJp||35);if(i===ist)tot+=dur;} }
+      else { var _s2 = k.jamMasuk.split(':').map(Number); tot=_s2[0]*60+_s2[1]; for(var _i=1;_i<jp;_i++){tot+=parseInt(k.durasiJp||35);if(_i===ist)tot+=dur;} }
+      var f=function(n){return String(Math.floor(n/60)%24).padStart(2,'0')+':'+String(n%60).padStart(2,'0');};
+      return f(tot)+'\u2013'+f(tot+parseInt(k.durasiJp||35));
+    };
+    var buildKelasHtml = function buildKelasHtml(k) {
+      var hariCetak = ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+      var maxJp = 1;
+      hariCetak.forEach(function(h){ for(var j=JP_MAX;j>=1;j--){ var _sc; if(slotConfig!==null&&slotConfig!==void 0&&(_sc=slotConfig[k.id])!==null&&_sc!==void 0&&(_sc=_sc[h])!==null&&_sc!==void 0&&_sc[j]&&j>maxJp)maxJp=j; } });
+      var thHari = hariCetak.map(function(h){return '<th>'+h+'</th>';}).join('');
+      var rows = '';
+      for (var jp=1; jp<=maxJp; jp++) {
+        var _jk2; var isUpc = jp===1&&((_jk2=jadwal===null||jadwal===void 0?void 0:jadwal[k.id])===null||_jk2===void 0?void 0:(_jk2=_jk2['Senin'])===null||_jk2===void 0?void 0:(_jk2=_jk2[1])===null||_jk2===void 0?void 0:_jk2.isUpacara);
+        var waktu;
+        if (isUpc) { var ju=(settingGlobal===null||settingGlobal===void 0?void 0:settingGlobal.jamUpacara)||'07:00'; var du=parseInt((settingGlobal===null||settingGlobal===void 0?void 0:settingGlobal.durasiUpacara)||60); var _sp=ju.split(':').map(Number); var sel=_sp[0]*60+_sp[1]+du; waktu=ju+'\u2013'+String(Math.floor(sel/60)%24).padStart(2,'0')+':'+String(sel%60).padStart(2,'0'); }
+        else { waktu=cTime2(k,jp); }
+        var cells = hariCetak.map(function(h){ var _sc2,_jk3;
+          if(!(slotConfig!==null&&slotConfig!==void 0&&(_sc2=slotConfig[k.id])!==null&&_sc2!==void 0&&(_sc2=_sc2[h])!==null&&_sc2!==void 0&&_sc2[jp]))return '<td class="td-off">\u2014</td>';
+          var ass=jadwal===null||jadwal===void 0||(_jk3=jadwal[k.id])===null||_jk3===void 0||(_jk3=_jk3[h])===null||_jk3===void 0?void 0:_jk3[jp];
+          if(!ass)return '<td class="td-empty"></td>';
+          if(ass.isUpacara){ var _ju=(settingGlobal===null||settingGlobal===void 0?void 0:settingGlobal.jamUpacara)||'07:00'; var _du=parseInt((settingGlobal===null||settingGlobal===void 0?void 0:settingGlobal.durasiUpacara)||60); var _sp2=_ju.split(':').map(Number); var _sel=_sp2[0]*60+_sp2[1]+_du; return '<td class="td-upacara">UPACARA<br>BENDERA<br><span style="font-size:7pt;font-weight:600;">'+_ju+'\u2013'+String(Math.floor(_sel/60)%24).padStart(2,'0')+':'+String(_sel%60).padStart(2,'0')+' WIB</span></td>'; }
+          return '<td class="td-mapel"><span class="mn">'+mNm(ass.mapelId)+'</span></td>';
+        }).join('');
+        var isIst = jp===parseInt(k.jpIstirahat||4);
+        rows+='<tr><td class="td-jp"><div class="jp-num">JP '+jp+'</div><div class="jp-time">'+waktu+'</div></td>'+cells+'</tr>';
+        if(isIst&&jp<maxJp){ rows+='<tr><td colspan="'+(hariCetak.length+1)+'" style="background:#fff8e1;text-align:center;font-size:7pt;font-weight:700;color:#888;padding:3px 0;letter-spacing:2px;border-top:2px dashed #ccc;border-bottom:2px dashed #ccc;">\u2615 ISTIRAHAT \xB7 '+parseInt(k.durasiIstirahat||15)+' menit</td></tr>'; }
+      }
+      return '<div class="kelas-block">'
+        +'<div class="kelas-header">'
+        +'<span class="kelas-badge">'+k.nama.toUpperCase()+'</span>'
+        +'<span class="wali-kelas">Wali Kelas: '+(k.waliKelasId ? gNm2(k.waliKelasId) : '—')+'</span>'
+        +'<span class="kelas-meta">TA: '+( akademik.tahunAjaran||'—')+' &nbsp;|&nbsp; Sem: '+(akademik.semester?akademik.semester.toUpperCase():'—')+' &nbsp;|&nbsp; Masuk: '+k.jamMasuk+' WIB &nbsp;|&nbsp; '+k.durasiJp+' menit/JP</span>'
+        +'</div>'
+        +'<table><thead><tr><th class="th-jp">JP / Waktu</th>'+thHari+'</tr></thead><tbody>'+rows+'</tbody></table>'
+        +'</div>';
+    };
+    var pagesHtml = '';
+    var tgl = new Date().toLocaleDateString('id-ID',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    for (var pi=0; pi<targetKelas.length; pi+=2) {
+      var k1=targetKelas[pi]; var k2=targetKelas[pi+1]||null;
+      var isLast=(pi+2)>=targetKelas.length;
+      pagesHtml+='<div class="page" style="'+(isLast?'break-after:auto;page-break-after:auto;':'break-after:page;page-break-after:always;')+'">'
+        +'<div class="page-head"><div class="school-name">'+akademik.namaSekolah.toUpperCase()+'</div><div class="doc-title">JADWAL PELAJARAN</div></div>'
+        +buildKelasHtml(k1)
+        +(k2?'<div class="divider"></div>'+buildKelasHtml(k2):'')
+        +'<div class="page-footer"><span>Dicetak: '+tgl+'</span><span>SIMJAS PRO v3.7</span><span>Hal '+(Math.floor(pi/2)+1)+' dari '+Math.ceil(targetKelas.length/2)+'</span></div>'
+        +'</div>';
+    }
+    var html="<!DOCTYPE html>\n<html lang=\"id\">\n<head>\n<meta charset=\"UTF-8\">\n<title>Jadwal F4 Portrait 2 Kelas \u2014 "+akademik.namaSekolah+"</title>\n<style>\n  @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@700;800;900&family=Noto+Sans:wght@400;500;600;700&display=swap');\n  *{box-sizing:border-box;margin:0;padding:0;}\n  html,body{background:#fff;color:#000;font-family:'Noto Sans',sans-serif;}\n  .page{width:100%;padding:8mm 10mm 6mm;display:flex;flex-direction:column;gap:6px;}\n  .page-head{text-align:center;border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:4px;}\n  .school-name{font-family:'Exo 2',sans-serif;font-size:13pt;font-weight:900;letter-spacing:1px;color:#000;line-height:1.2;}\n  .doc-title{font-family:'Exo 2',sans-serif;font-size:8pt;font-weight:700;color:#444;letter-spacing:3px;margin-top:1px;text-transform:uppercase;}\n  .kelas-block{flex:1;display:flex;flex-direction:column;gap:3px;}\n  .kelas-header{display:flex;align-items:baseline;gap:10px;border-bottom:1.5px solid #000;padding-bottom:3px;margin-bottom:3px;}\n  .kelas-badge{font-family:'Exo 2',sans-serif;font-size:13pt;font-weight:900;color:#000;border:2px solid #000;padding:1px 10px;border-radius:4px;letter-spacing:1px;white-space:nowrap;}\n  .kelas-meta{font-size:7pt;color:#444;line-height:1.4;}\n  .wali-kelas{font-size:12pt;font-weight:700;color:#000;}\n  table{width:100%;border-collapse:collapse;table-layout:fixed;}\n  th,td{border:1px solid #000;vertical-align:middle;text-align:center;word-break:break-word;hyphens:auto;}\n  thead tr{background:#1a1a1a;}\n  th{font-family:'Exo 2',sans-serif;font-size:12pt;font-weight:900;color:#fff;padding:4px 2px;letter-spacing:0.3px;}\n  th.th-jp{width:68px;background:#111;}\n  tbody tr:nth-child(odd){background:#f8f8f8;}\n  tbody tr:nth-child(even){background:#fff;}\n  .td-jp{background:#111!important;padding:3px 2px;}\n  .jp-num{font-family:'Exo 2',sans-serif;font-size:7.5pt;font-weight:900;color:#fff;line-height:1.2;}\n  .jp-time{font-size:7pt;color:#bbb;margin-top:1px;font-weight:600;white-space:normal;line-height:1.2;}\n  .td-off{background:#e8e8e8!important;color:#999;font-size:9pt;font-weight:700;}\n  .td-empty{background:#fff!important;}\n  .td-upacara{background:#fff0f0!important;font-family:'Exo 2',sans-serif;font-size:6.5pt;font-weight:900;color:#c00;padding:3px;line-height:1.3;}\n  .td-mapel{padding:3px 3px;}\n  .mn{display:block;font-family:'Exo 2',sans-serif;font-size:12pt;font-weight:400;color:#000;line-height:1.3;}\n  .divider{border-top:2px dashed #999;margin:5px 0;}\n  .page-footer{display:flex;justify-content:space-between;align-items:center;font-size:6.5pt;color:#666;border-top:1px solid #ccc;padding-top:4px;margin-top:2px;}\n  @media print{\n    @page{size:210mm 330mm;margin:8mm;}\n    body{background:#fff!important;}\n    .page{padding:0;}\n    .page-footer{color:#888!important;}\n  }\n</style>\n</head>\n<body>\n"+pagesHtml+"\n<script>window.onload=function(){window.focus();window.print()};<\/script>\n</body>\n</html>";
+    var win=window.open('','_blank','width=900,height=1200,scrollbars=yes');
+    if(!win){alert('Pop-up diblokir browser. Izinkan pop-up lalu coba lagi.');return;}
     win.document.write(html);
     win.document.close();
   };
@@ -7985,7 +9395,7 @@ var GridJadwal = memo(function (_ref1) {
       borderRadius: 4,
       marginLeft: 2
     }
-  }, "4 opsi"))), swapStep > 0 && /*#__PURE__*/React.createElement("div", {
+  }, "6 opsi"))), swapStep > 0 && /*#__PURE__*/React.createElement("div", {
     className: "ain no-print",
     style: {
       background: 'linear-gradient(135deg,rgba(0,184,212,.15),rgba(0,229,160,.08))',
@@ -8162,6 +9572,146 @@ var GridJadwal = memo(function (_ref1) {
       marginRight: 6
     }
   }), "Cetak Sekarang")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(0,184,212,.06)',
+      border: '1px solid rgba(0,184,212,.2)',
+      borderRadius: 8,
+      padding: '12px 14px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 7,
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-file-pdf",
+    style: {
+      color: '#00b8d4',
+      fontSize: 15
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontFamily: 'Exo 2',
+      fontWeight: 900,
+      fontSize: 12,
+      color: '#fff'
+    }
+  }, "Jadwal Per Kelas (F4)")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 10,
+      color: '#666',
+      marginBottom: 10,
+      lineHeight: 1.5
+    }
+  }, "Landscape F4 330\xD7215mm \xB7 1 kelas per halaman \xB7 tanpa nama guru di tiap sel"), /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      doPrintF4NoGuru();
+    },
+    style: {
+      width: '100%',
+      background: 'linear-gradient(135deg,rgba(0,184,212,.25),rgba(0,184,212,.18))',
+      color: '#00e0f4',
+      border: '1px solid rgba(0,184,212,.4)',
+      borderRadius: 6,
+      padding: '8px',
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: 'pointer'
+    }
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-print",
+    style: {
+      marginRight: 6
+    }
+  }), "Cetak F4")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(0,229,160,.06)',
+      border: '1px solid rgba(0,229,160,.2)',
+      borderRadius: 8,
+      padding: '12px 14px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 7,
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-file-pdf",
+    style: {
+      color: '#00e5a0',
+      fontSize: 15
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontFamily: 'Exo 2',
+      fontWeight: 900,
+      fontSize: 12,
+      color: '#fff'
+    }
+  }, "Jadwal Per Kelas (F4 Portrait)")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 10,
+      color: '#666',
+      marginBottom: 10,
+      lineHeight: 1.5
+    }
+  }, "Portrait F4 210\xD7330mm \xB7 1 kelas per halaman \xB7 tanpa nama guru"), /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() {
+      doPrintF4PortraitNoGuru();
+    },
+    style: {
+      width: '100%',
+      background: 'linear-gradient(135deg,rgba(0,229,160,.25),rgba(0,229,160,.18))',
+      color: '#00e5a0',
+      border: '1px solid rgba(0,229,160,.4)',
+      borderRadius: 6,
+      padding: '8px',
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: 'pointer'
+    }
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-print",
+    style: {
+      marginRight: 6
+    }
+  }), "Cetak F4 Portrait")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(0,229,160,.04)',
+      border: '1px solid rgba(0,229,160,.15)',
+      borderRadius: 8,
+      padding: '12px 14px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-copy",
+    style: { color: '#00e5a0', fontSize: 15 }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: 'Exo 2', fontWeight: 900, fontSize: 12, color: '#fff' }
+  }, "F4 Portrait \xB7 2 Kelas / Halaman")), /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: 10, color: '#666', marginBottom: 10, lineHeight: 1.5 }
+  }, "Portrait F4 210\xD7330mm \xB7 2 kelas per halaman \xB7 tanpa nama guru"), /*#__PURE__*/React.createElement("button", {
+    onClick: function onClick() { doPrintF4Portrait2PerPage(); },
+    style: {
+      width: '100%',
+      background: 'linear-gradient(135deg,rgba(0,229,160,.2),rgba(0,184,212,.15))',
+      color: '#00e5a0',
+      border: '1px solid rgba(0,229,160,.35)',
+      borderRadius: 6,
+      padding: '8px',
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: 'pointer'
+    }
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-print",
+    style: { marginRight: 6 }
+  }), "Cetak F4 Portrait (2/hal)")), /*#__PURE__*/React.createElement("div", {
     style: {
       background: 'rgba(251,191,36,.06)',
       border: '1px solid rgba(245,158,11,.2)',
@@ -8357,7 +9907,71 @@ var GridJadwal = memo(function (_ref1) {
     style: {
       marginRight: 6
     }
-  }), "Download XLSX")))), /*#__PURE__*/React.createElement("div", {
+  }), "Download XLSX")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(251,191,36,.04)',
+      border: '1px solid rgba(251,191,36,.25)',
+      borderRadius: 8,
+      padding: '12px 14px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-layer-group",
+    style: { color: '#fbbf24', fontSize: 15 }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: 'Exo 2', fontWeight: 900, fontSize: 12, color: '#fff' }
+  }, "Rekap A3 \u2014 1 Halaman")), /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: 10, color: '#666', marginBottom: 10, lineHeight: 1.5 }
+  }, "A3 Landscape \xB7 semua mapel \xD7 semua guru dalam 1 lembar \xB7 total JP per guru & mapel"), /*#__PURE__*/React.createElement("button", {
+    onClick: doPrintA3,
+    style: {
+      width: '100%',
+      background: 'linear-gradient(135deg,rgba(251,191,36,.25),rgba(245,158,11,.18))',
+      color: '#fbbf24',
+      border: '1px solid rgba(245,158,11,.5)',
+      borderRadius: 6,
+      padding: '8px',
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: 'pointer'
+    }
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-file-alt",
+    style: { marginRight: 6 }
+  }), "Cetak Rekap A3")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: 'rgba(0,184,212,.04)',
+      border: '1px solid rgba(0,184,212,.25)',
+      borderRadius: 8,
+      padding: '12px 14px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-calendar-alt",
+    style: { color: '#00b8d4', fontSize: 15 }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: { fontFamily: 'Exo 2', fontWeight: 900, fontSize: 12, color: '#fff' }
+  }, "Jadwal Lengkap A3 \u2014 1 Halaman")), /*#__PURE__*/React.createElement("p", {
+    style: { fontSize: 10, color: '#666', marginBottom: 10, lineHeight: 1.5 }
+  }, "A3 Landscape \xB7 semua kelas & hari dalam 1 lembar \xB7 baris = JP + waktu, kolom = kelas per hari"), /*#__PURE__*/React.createElement("button", {
+    onClick: doPrintA3Jadwal,
+    style: {
+      width: '100%',
+      background: 'linear-gradient(135deg,rgba(0,184,212,.22),rgba(0,229,160,.15))',
+      color: '#00b8d4',
+      border: '1px solid rgba(0,184,212,.5)',
+      borderRadius: 6,
+      padding: '8px',
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: 'pointer'
+    }
+  }, /*#__PURE__*/React.createElement("i", {
+    className: "fas fa-calendar-alt",
+    style: { marginRight: 6 }
+  }), "Cetak Jadwal A3")))), /*#__PURE__*/React.createElement("div", {
     className: "hs",
     style: {
       flex: 1,
@@ -11590,15 +13204,15 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
 
     // ── KOP HTML (presisi 3-kolom: logo kiri | teks tengah | logo kanan) ──
     var logoBox = function(src, align){
-      return '<div style="width:92px;flex-shrink:0;display:flex;align-items:center;justify-content:'+(align==='left'?'flex-start':'flex-end')+';">'
-        +(src?'<img src="'+src+'" style="max-width:92px;max-height:108px;object-fit:contain;display:block;">':'')
+      return '<div style="width:80px;flex-shrink:0;display:flex;align-items:center;justify-content:'+(align==='left'?'flex-start':'flex-end')+';'+(align==='left'?'padding-right:10px;':'padding-left:10px;')+'">'
+        +(src?'<img src="'+src+'" style="max-width:70px;max-height:80px;object-fit:contain;display:block;">':'')
         +'</div>';
     };
-    var kopTeks = '<div style="flex:1;text-align:center;padding:0 8px;">'
-      +(skData.namaYayasan?'<p style="font-weight:bold;font-size:11pt;margin:0 0 1px;letter-spacing:.3px;">'+skData.namaYayasan.toUpperCase()+'</p>':'')
-      +'<p style="font-weight:bold;font-size:14pt;text-transform:uppercase;letter-spacing:.3px;margin:0 0 2px;">'+namaInstansi+'</p>'
-      +(skData.alamatInstansi?'<p style="font-size:10pt;margin:0 0 1px;">'+skData.alamatInstansi+'</p>':'')
-      +'<p style="font-size:10pt;margin:0;">'
+    var kopTeks = '<div style="flex:1;text-align:center;padding:0 12px;">'
+      +(skData.namaYayasan?'<p style="font-weight:bold;font-size:10.5pt;margin:0 0 2px;letter-spacing:.3px;">'+skData.namaYayasan.toUpperCase()+'</p>':'')
+      +'<p style="font-weight:bold;font-size:16pt;text-transform:uppercase;letter-spacing:.5px;margin:0 0 3px;line-height:1.2;">'+namaInstansi+'</p>'
+      +(skData.alamatInstansi?'<p style="font-size:9.5pt;margin:0 0 2px;line-height:1.4;">'+skData.alamatInstansi+'</p>':'')
+      +'<p style="font-size:9.5pt;margin:0;line-height:1.4;">'
         +[skData.nsm?'NSM: '+skData.nsm:'',skData.npsn?'NPSN: '+skData.npsn:'',skData.telp?'Telp: '+skData.telp:'',skData.email?'Email: '+skData.email:''].filter(Boolean).join('&nbsp;&nbsp;|&nbsp;&nbsp;')
       +'</p>'
       +'</div>';
@@ -11641,7 +13255,6 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
       +'<p style="font-weight:bold;font-size:12pt;text-transform:uppercase;">PEMBAGIAN TUGAS GURU DALAM KEGIATAN PROSES BELAJAR MENGAJAR</p>'
       +'<p style="font-weight:bold;font-size:12pt;text-transform:uppercase;">TAHUN PELAJARAN '+thnPelajaran+'</p>'
       +'</div>'
-      +'<p style="text-align:center;font-weight:bold;font-size:12pt;margin-bottom:14px;">DENGAN RAHMAT TUHAN YANG MAHA ESA</p>'
       +'<p style="text-align:center;font-weight:bold;font-size:12pt;text-decoration:underline;margin-bottom:20px;">'+jabatan.toUpperCase()+' '+namaInstansi.toUpperCase()+',</p>'
       // Menimbang
       +'<table class="tlayout">'
@@ -11860,17 +13473,17 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
 
     var Kop = function(){
       return React.createElement('div',{style:{display:'flex',alignItems:'center',borderBottom:'3px solid #000',padding:'0 0 8px',marginBottom:18}},
-        React.createElement('div',{style:{width:92,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'flex-start'}},
-          skData.logoKiri && React.createElement('img',{src:skData.logoKiri,style:{maxWidth:92,maxHeight:108,objectFit:'contain',display:'block'}})
+        React.createElement('div',{style:{width:80,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'flex-start',paddingRight:10}},
+          skData.logoKiri && React.createElement('img',{src:skData.logoKiri,style:{maxWidth:70,maxHeight:80,objectFit:'contain',display:'block'}})
         ),
-        React.createElement('div',{style:{flex:1,textAlign:'center',padding:'0 8px'}},
-          skData.namaYayasan && React.createElement('p',{style:{fontWeight:'bold',fontSize:'11pt',margin:'0 0 1px',letterSpacing:.3}},skData.namaYayasan.toUpperCase()),
-          React.createElement('p',{style:{fontWeight:'bold',fontSize:'14pt',textTransform:'uppercase',letterSpacing:.3,margin:'0 0 2px'}},namaInstansi),
-          skData.alamatInstansi && React.createElement('p',{style:{fontSize:'10pt',margin:'0 0 1px'}},skData.alamatInstansi),
-          React.createElement('p',{style:{fontSize:'10pt',margin:0}},[skData.nsm?'NSM: '+skData.nsm:'',skData.npsn?'NPSN: '+skData.npsn:'',skData.telp?'Telp: '+skData.telp:'',skData.email?'Email: '+skData.email:''].filter(Boolean).join('  |  '))
+        React.createElement('div',{style:{flex:1,textAlign:'center',padding:'0 12px'}},
+          skData.namaYayasan && React.createElement('p',{style:{fontWeight:'bold',fontSize:'10.5pt',margin:'0 0 2px',letterSpacing:.3}},skData.namaYayasan.toUpperCase()),
+          React.createElement('p',{style:{fontWeight:'bold',fontSize:'16pt',textTransform:'uppercase',letterSpacing:.5,margin:'0 0 3px',lineHeight:1.2}},namaInstansi),
+          skData.alamatInstansi && React.createElement('p',{style:{fontSize:'9.5pt',margin:'0 0 2px',lineHeight:1.4}},skData.alamatInstansi),
+          React.createElement('p',{style:{fontSize:'9.5pt',margin:0,lineHeight:1.4}},[skData.nsm?'NSM: '+skData.nsm:'',skData.npsn?'NPSN: '+skData.npsn:'',skData.telp?'Telp: '+skData.telp:'',skData.email?'Email: '+skData.email:''].filter(Boolean).join('  |  '))
         ),
-        React.createElement('div',{style:{width:92,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'flex-end'}},
-          skData.logoKanan && React.createElement('img',{src:skData.logoKanan,style:{maxWidth:92,maxHeight:108,objectFit:'contain',display:'block'}})
+        React.createElement('div',{style:{width:80,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'flex-end',paddingLeft:10}},
+          skData.logoKanan && React.createElement('img',{src:skData.logoKanan,style:{maxWidth:70,maxHeight:80,objectFit:'contain',display:'block'}})
         )
       );
     };
@@ -11927,7 +13540,6 @@ var SKPembagianTugas = function SKPembagianTugas(_ref_sk) {
           React.createElement('p',{style:{fontWeight:'bold',fontSize:'12pt',textTransform:'uppercase'}},'PEMBAGIAN TUGAS GURU DALAM KEGIATAN PROSES BELAJAR MENGAJAR'),
           React.createElement('p',{style:{fontWeight:'bold',fontSize:'12pt',textTransform:'uppercase'}},'TAHUN PELAJARAN '+thnPelajaran)
         ),
-        React.createElement('p',{style:{textAlign:'center',fontWeight:'bold',fontSize:'12pt',marginBottom:12}},'DENGAN RAHMAT TUHAN YANG MAHA ESA'),
         React.createElement('p',{style:{textAlign:'center',fontWeight:'bold',fontSize:'12pt',textDecoration:'underline',marginBottom:18}},jabatan.toUpperCase()+' '+namaInstansi.toUpperCase()+','),
         React.createElement('table',{style:{width:'100%',borderCollapse:'collapse',marginBottom:10}},
           React.createElement('tbody',null,
@@ -13789,7 +15401,7 @@ var App = function App() {
     padding: '9px 12px',
     fontSize: 12,
     fontWeight: 600,
-    color: '#555',
+    color: '#eaeaf2',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
